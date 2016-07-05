@@ -19,10 +19,12 @@ dependencies = {
   "argparse",
   "ansicolors",
   "copas",
+  "etlua",
   "jwt",
   "layeredata",
+  "luasocket",
+  "lua-cjson-ol",
   "lua-websockets",
-  "lustache",
 }
 
 build = {

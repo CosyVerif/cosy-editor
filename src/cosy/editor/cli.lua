@@ -1,13 +1,11 @@
-local Copas     = require "copas"
 local Arguments = require "argparse"
 local Colors    = require "ansicolors"
+local Copas     = require "copas"
 local Et        = require "etlua"
 local Json      = require "cjson"
 local Jwt       = require "jwt"
 local Websocket = require "websocket"
 local Time      = require "socket".gettime
-local Util      = require "lapis.util"
-local Config    = require "lapis.config".get ()
 local Ltn12     = require "ltn12"
 local CHttp     = require "copas.http"
 local Http      = require "socket.http"
@@ -68,7 +66,7 @@ local function request (http, url, options)
   if status ~= 200 then
     return nil, status
   end
-  return Util.from_json (table.concat (result)), tonumber (status)
+  return Json.decode (table.concat (result)), tonumber (status)
 end
 
 local last_access = Time ()
@@ -82,7 +80,7 @@ Copas.addserver = function (socket, f)
   Copas.addthread (function ()
     while true do
       Copas.sleep (1)
-      if last_access + Config.editor.timeout <= Time () then
+      if last_access + data.timeout <= Time () then
         server:close ()
         local _, status = request (CHttp, data.api .. "/editor", {
           method = "DELETE",
