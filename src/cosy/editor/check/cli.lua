@@ -8,12 +8,12 @@ local source
 local rocks = {}
 
 do
-  local path = package.searchpath ("cosy.check.cli", package.path)
+  local path = package.searchpath ("cosy.editor.check.cli", package.path)
   local parts = {}
   for part in path:gmatch "[^/]+" do
     parts [#parts+1] = part
   end
-  for _ = 1, 2 do
+  for _ = 1, 3 do
     parts [#parts] = nil
   end
   source = (path:find "^/" and "/" or "") .. table.concat (parts, "/")
@@ -31,16 +31,12 @@ do
 end
 
 local parser = Arguments () {
-  name        = "cosy-check",
-  description = "Perform various checks on the cosy sources",
+  name        = "cosy-check-editor",
+  description = "Perform various checks on the cosy editor sources",
 }
 parser:option "--prefix" {
   description = "install prefix",
   default     = prefix,
-}
-parser:option "--test-format" {
-  description = "format for the test results (supported by busted)",
-  default     = "TAP",
 }
 parser:option "--output" {
   description = "output directory",
@@ -61,13 +57,6 @@ function _G.string.split (s, delimiter)
   end
   return result
 end
-
--- Compute path:
-local main = package.searchpath ("cosy.check.cli", package.path)
-if main:sub (1, 2) == "./" then
-  main = Lfs.currentdir () .. "/" .. main:sub (3)
-end
-main = main:gsub ("/check/cli.lua", "")
 
 local status = true
 
@@ -93,13 +82,7 @@ do
     rm -f luacov.*
   ]]
   status = os.execute (Et.render ([[
-    LAPIS_OPENRESTY="<%- prefix %>/nginx/sbin/nginx" "<%- prefix %>/bin/busted" "<%- tags %>" --verbose src/
-  ]], {
-    prefix = prefix,
-    tags   = arguments.tags and "--tags=" .. arguments.tags,
-  })) == 0 and status
-  status = os.execute (Et.render ([[
-    LAPIS_OPENRESTY="<%- prefix %>/nginx/sbin/nginx" RUN_COVERAGE=true "<%- prefix %>/bin/busted" --verbose --coverage "<%- tags %>" --verbose src/
+    "<%- prefix %>/bin/busted" --verbose --coverage "<%- tags %>" --verbose src/
   ]], {
     prefix = prefix,
     tags   = arguments.tags and "--tags=" .. arguments.tags,
@@ -205,152 +188,6 @@ end
 
 print ()
 
--- i18n
--- ====
-
-do
-  local messages = {}
-  local problems = 0
-
-  for module in Lfs.dir (main) do
-    local path = main .. "/" .. module
-    if  module ~= "." and module ~= ".."
-    and Lfs.attributes (path, "mode") == "directory" then
-      if Lfs.attributes (path .. "/i18n.lua", "mode") == "file" then
-        local translations = require (Et.render ("cosy.<%- module %>.i18n", {
-          module = module,
-        }))
-        for key, t in pairs (translations) do
-          if not messages [key] then
-            messages [key] = {
-              defined = {},
-              used    = {},
-            }
-          end
-          messages [key].defined [module] = true
-          if not t.en then
-            print (Colors (Et.render ("Translation key %{red}<%- key %>%{reset} defined in %{blue}<%- module %>%{reset} does not have an 'en' translation.", {
-              key    = key,
-              module = "cosy." .. module,
-            })))
-            problems = problems + 1
-          end
-          local linen = 1
-          local times = 0
-          local lines = {}
-          for line in io.lines (path .. "/i18n.lua") do
-            if line:match (Et.render ('%["<%- key %>"%]', {
-              key = key,
-            })) then
-              lines [#lines+1] = Et.render ("%{blue}<%- line %>%{reset}", {
-                line = linen,
-              })
-              times = times + 1
-            end
-            linen = linen + 1
-          end
-          if times > 1 then
-            print (Colors (Et.render ("Translation key %{red}<%- key %>%{reset} is defined several times in %{blue}<%- module %>%{reset}, lines <%- lines %>.", {
-              key    = key,
-              module = module,
-              lines  = table.concat (lines, ", "),
-            })))
-            problems = problems + 1
-          end
-        end
-      end
-    end
-  end
-
-  for module in Lfs.dir (main) do
-    local path = main .. "/" .. module
-    if  module ~= "." and module ~= ".."
-    and Lfs.attributes (path, "mode") == "directory" then
-      for submodule in Lfs.dir (path) do
-        submodule = submodule:sub (1, #submodule-4)
-        local subpath = path .. "/" .. submodule .. ".lua"
-        if  submodule ~= "." and submodule ~= ".."
-        and Lfs.attributes (subpath, "mode") == "file" then
-          for line in io.lines (subpath) do
-            local key = line:match 'i18n%s*%[%s*"([%w%:%-%_]+)"%s*%]'
-                     or line:match "i18n%s*%[%s*'([%w%:%-%_]+)'%s*%]"
-                     or line:match 'methods%s*%[%s*"([%w%:%-%_]+)"%s*%]'
-                     or line:match "methods%s*%[%s*'([%w%:%-%_]+)'%s*%]"
-            if key and key:find "_" ~= 1 then
-              if messages [key] then
-                messages [key].used [module .. "." .. submodule] = true
-              else
-                print (Colors (Et.render ("Translation key %{red}<%- key %>%{reset} is used in %{blue}<%- module %>%{reset}, but never defined.", {
-                  key    = key,
-                  module = "cosy." .. module .. "." .. submodule,
-                })))
-                problems = problems + 1
-              end
-            end
-          end
-        end
-      end
-    end
-  end
-
-  for key, t in pairs (messages) do
-    do
-      local times   = 0
-      local modules = {}
-      for module in pairs (t.defined) do
-        times = times + 1
-        modules [#modules+1] = Et.render ("%{blue}<%- module %>%{reset}", {
-          module = module,
-        })
-      end
-      if times > 1 then
-        print (Colors (Et.render ("Translation key %{red}<%- key %>%{reset} is defined <%- n %> times in modules <%- modules %>.", {
-          key     = key,
-          modules = table.concat (modules, ", "),
-          n       = times,
-        })))
-        problems = problems + 1
-      end
-    end
-    local uses = 0
-    for _ in pairs (t.used) do
-      uses = uses + 1
-    end
-    if uses == 0 then
-      local modules = {}
-      for m in pairs (t.defined) do
-        local module_name = "cosy." .. m
-        -- the modules below define translations for the user only,
-        -- so we do not want to take them into account.
-        if  module_name ~= "cosy.methods"
-        and module_name ~= "cosy.parameters" then
-          modules [#modules+1] = Colors ("%{blue}" .. module_name .. "%{reset}")
-        end
-      end
-      if #modules ~= 0 then
-        print (Colors (Et.render ("Translation key %{red}<%- key %>%{reset} is defined in <%- module %>, but never used.", {
-          key    = key,
-          module = table.concat (modules, ", "),
-        })))
-        problems = problems + 1
-      end
-    end
-  end
-
-  if problems == 0 then
-    print (Colors ("Translations checks detect %{bright green}no problems%{reset}."))
-    status = status and true
-  else
-    print (Colors (Et.render ("Translations checks detect %{bright red}<%- problems %> problems%{reset}."), {
-      problems = problems,
-    }))
-  status = status and false
-  end
-
-end
-
-print ()
-
 -- shellcheck
 -- ==========
 
@@ -360,8 +197,7 @@ do
   if os.execute "command -v shellcheck > /dev/null 2>&1" == 0 then
     local s = os.execute (Et.render ([[
       if [ -d bin ]; then
-        . "<%- prefix %>/bin/realpath.sh"
-        shellcheck $(realpath bin/*)
+        shellcheck bin/*
       fi
     ]], {
       prefix = prefix,

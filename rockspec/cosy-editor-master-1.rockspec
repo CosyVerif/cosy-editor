@@ -20,16 +20,16 @@ dependencies = {
   "ansicolors",
   "copas",
   "etlua",
-  "jwt",
   "layeredata",
   "luasocket",
-  "lua-cjson-ol",
+  "lua-cjson",
   "lua-websockets",
 }
 
 build = {
   type    = "builtin",
   modules = {
+    ["cosy.editor"    ] = "src/cosy/editor/init.lua",
     ["cosy.editor.cli"] = "src/cosy/editor/cli.lua",
   },
   install = {

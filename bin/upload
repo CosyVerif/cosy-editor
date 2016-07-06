@@ -1,11 +1,11 @@
 #! /usr/bin/env bash
 
 branch=$(git rev-parse --abbrev-ref HEAD)
-[ "${branch}" = "master" ] && {
+if [ "${branch}" = "master" ]; then
   server="http://luarocks.org/"
-} || {
+else
   server="http://luarocks.org/dev"
-}
+fi
 tag=$(git describe --tags --abbrev=0 || echo "0.0")
 count=$(git rev-list --count HEAD ^"${tag}" || git rev-list --count HEAD)
 
