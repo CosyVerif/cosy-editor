@@ -1,14 +1,13 @@
-package = "cosy-editor-dev"
+package = "cosy-editor-env"
 version = "master-1"
 source  = {
-  url = "git://github.com/saucisson/cosy-editor",
+  url    = "git+https://github.com/cosyverif/editor.git",
+  branch = "master",
 }
 
 description = {
-  summary    = "CosyVerif: editor (dev dependencies)",
-  detailed   = [[
-    Development dependencies for cosy-editor.
-  ]],
+  summary    = "Development environment for cosy-editor",
+  detailed   = [[]],
   homepage   = "http://www.cosyverif.org/",
   license    = "MIT/X11",
   maintainer = "Alban Linard <alban@linard.fr>",

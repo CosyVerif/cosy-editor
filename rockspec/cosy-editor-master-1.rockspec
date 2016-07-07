@@ -1,11 +1,12 @@
 package = "cosy-editor"
 version = "master-1"
 source  = {
-  url = "git://github.com/cayonerie/server"
+  url    = "git+https://github.com/cosyverif/editor.git",
+  branch = "master",
 }
 
 description = {
-  summary    = "CosyVerif: editor",
+  summary    = "CosyVerif editor",
   detailed   = [[
     Editor of the CosyVerif platform.
   ]],
