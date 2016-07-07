@@ -3,7 +3,6 @@ box: cosyverif/lua-environments
     - script:
         name: "install dependencies"
         code: |
-          luarocks install luasec
           luarocks install luacov-coveralls
     - script:
         name: "check and test"
