@@ -34,10 +34,12 @@ end
 
 function Editor.create (options)
   return setmetatable ({
+    api      = assert (options.api),
     port     = assert (options.port),
-    token    = assert (options.token),
-    timeout  = assert (options.timeout),
+    project  = assert (options.project),
     resource = assert (options.resource),
+    timeout  = assert (options.timeout),
+    token    = assert (options.token),
   }, Editor)
 end
 
@@ -49,7 +51,7 @@ function Editor.start (editor)
     editor.socket = socket
     editor.host, editor.port = socket:getsockname ()
     copas_addserver (socket, f)
-    local url = "ws://" .. editor.host .. ":" .. tostring (editor.port) .. "/"
+    local url = "ws://" .. editor.host .. ":" .. tostring (editor.port)
     Copas.addthread (function ()
       while true do
         Copas.sleep (1)
@@ -114,13 +116,12 @@ function Editor.start (editor)
   })
   assert (status == 204, status)
   Copas.addserver = addserver
-  editor.server = Websocket.server.copas.listen
-  {
+  editor.server = Websocket.server.copas.listen {
     port      = editor.port,
     default   = handler,
     protocols = {
       cosy = handler,
-    }
+    },
   }
   Copas.addserver = copas_addserver
 end
