@@ -33,7 +33,7 @@ local function request (http, url, options)
 end
 
 function Editor.create (options)
-  return setmetatable ({
+  local result = setmetatable ({
     api      = assert (options.api),
     port     = assert (options.port),
     project  = assert (options.project),
@@ -41,6 +41,8 @@ function Editor.create (options)
     timeout  = assert (options.timeout),
     token    = assert (options.token),
   }, Editor)
+  result.url = Et.render ("<%- api %>/projects/<%- project %>/resources/<%- resource %>", result)
+  return result
 end
 
 function Editor.start (editor)
@@ -110,7 +112,7 @@ function Editor.start (editor)
     -- end
   end
 
-  local _, status = request (Http, editor.resource, {
+  local _, status = request (Http, editor.url, {
     method  = "HEAD",
     headers = { Authorization = "Bearer " .. editor.token},
   })
@@ -133,7 +135,7 @@ function Editor.stop (editor)
       time     = os.date "%c",
     })))
     editor.server:close ()
-    local _, status = request (CHttp, editor.resource .. "/editor", {
+    local _, status = request (CHttp, editor.url .. "/editor", {
       method = "DELETE",
       headers = { Authorization = "Bearer " .. editor.token }
     })

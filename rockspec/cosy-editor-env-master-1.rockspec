@@ -1,8 +1,7 @@
 package = "cosy-editor-env"
 version = "master-1"
 source  = {
-  url    = "git+https://github.com/cosyverif/editor.git",
-  branch = "master",
+  url = "git+https://github.com/cosyverif/editor.git",
 }
 
 description = {
@@ -21,11 +20,13 @@ dependencies = {
   "copas",
   "cluacov",
   "etlua",
-  "lua-websockets",
+  "hashids",
+  "jwt",
   "luacheck",
   "luacov",
   "luacov-coveralls",
   "luafilesystem",
+  "luasocket",
 }
 
 build = {

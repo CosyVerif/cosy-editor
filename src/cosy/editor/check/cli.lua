@@ -3,32 +3,9 @@ local Colors    = require 'ansicolors'
 local Et        = require "etlua"
 local Lfs       = require "lfs"
 local Reporter  = require "luacov.reporter"
-local prefix
-local source
-local rocks = {}
 
-do
-  local path = package.searchpath ("cosy.editor.check.cli", package.path)
-  local parts = {}
-  for part in path:gmatch "[^/]+" do
-    parts [#parts+1] = part
-  end
-  for _ = 1, 3 do
-    parts [#parts] = nil
-  end
-  source = (path:find "^/" and "/" or "") .. table.concat (parts, "/")
-  for _ = 1, 4 do
-    parts [#parts] = nil
-  end
-  prefix = (path:find "^/" and "/" or "") .. table.concat (parts, "/")
-  local rockspath = prefix .. "/lib/luarocks/rocks/"
-  for subpath in Lfs.dir (rockspath) do
-    if subpath:match "^cosy"
-    and Lfs.attributes (rockspath .. subpath, "mode") == "directory" then
-      rocks [#rocks+1] = rockspath .. subpath
-    end
-  end
-end
+local source = "."
+local prefix = os.getenv "COSY_PREFIX"
 
 local parser = Arguments () {
   name        = "cosy-check-editor",
@@ -46,7 +23,6 @@ parser:option "--tags" {
   description = "busted tags",
   default     = nil,
 }
-
 
 local arguments = parser:parse ()
 
