@@ -1,14 +1,18 @@
-box: cosyverif/lua-environments
+box: debian:testing
 build:
   steps:
     - script:
         name: "install dependencies"
         code: |
-          luarocks install luacov-coveralls
+          apt-get  update  --yes
+          apt-get  install --yes git libssl-dev luajit luarocks
+          luarocks install luasec
+          luarocks make cosy-editor-dev-master-1.rockspec
+          luarocks make cosy-editor-master-1.rockspec
     - script:
         name: "check and test"
         code: |
-          ./bin/test /lua/
+          cosy-check-editor
   after-steps:
     - script:
         name: "export to coveralls"
