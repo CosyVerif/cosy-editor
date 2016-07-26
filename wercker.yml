@@ -5,10 +5,10 @@ build:
         name: "install dependencies"
         code: |
           apt-get  update  --yes
-          apt-get  install --yes git libssl-dev luajit luarocks
+          apt-get  install --yes git curl libssl-dev luarocks
           luarocks install luasec
-          luarocks make cosy-editor-dev-master-1.rockspec
-          luarocks make cosy-editor-master-1.rockspec
+          luarocks make rockspec/cosy-editor-env-master-1.rockspec
+          luarocks make rockspec/cosy-editor-master-1.rockspec
     - script:
         name: "check and test"
         code: |
