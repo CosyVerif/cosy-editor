@@ -4,7 +4,7 @@ local Et        = require "etlua"
 local Lfs       = require "lfs"
 local Reporter  = require "luacov.reporter"
 
-local source = "."
+local source = "src/"
 local prefix = os.getenv "COSY_PREFIX"
 
 local parser = Arguments () {
