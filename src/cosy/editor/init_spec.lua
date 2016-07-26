@@ -63,7 +63,7 @@ describe ("editor", function ()
     local url = "https://cloud.docker.com"
     local api = url .. "/api/app/v1"
     -- Create service:
-    local id  = Hashids.new (tostring (os.time ())):encode (666)
+    local id  = branch .. "-" .. Hashids.new (tostring (os.time ())):encode (666)
     local stack, stack_status = Http.request {
       url     = api .. "/stack/",
       method  = "POST",
@@ -85,8 +85,10 @@ describe ("editor", function ()
               "database",
             },
             environment = {
+              RESOLVERS         = "127.0.0.11",
               COSY_PREFIX       = "/usr/local",
               COSY_HOST         = "api:8080",
+              COSY_BRANCH       = branch,
               POSTGRES_HOST     = "database",
               POSTGRES_USER     = "postgres",
               POSTGRES_PASSWORD = "",
@@ -157,25 +159,19 @@ describe ("editor", function ()
   end)
 
   teardown (function ()
-    local _, stopped_status = Http.request {
-      url     = docker_url .. "/stop",
-      method  = "POST",
-      headers = headers,
-    }
-    assert (stopped_status == 202)
     local _, deleted_status = Http.request {
       url     = docker_url,
       method  = "DELETE",
       headers = headers,
     }
-    assert (deleted_status == 202)
+    assert (deleted_status == 202, deleted_status)
   end)
 
   local project, resource, project_url, resource_url
 
   before_each (function ()
     local token = make_token (identities.rahan)
-    local status, result = Http.request {
+    local result, status = Http.request {
       url     = server_url .. "/projects",
       method  = "POST",
       headers = {
@@ -185,7 +181,7 @@ describe ("editor", function ()
     assert.are.same (status, 201)
     project = result.id
     project_url = server_url .. "/projects/" .. project
-    status, result = Http.request {
+    result, status = Http.request {
       url     = project_url .. "/resources",
       method  = "POST",
       headers = {
@@ -221,6 +217,15 @@ describe ("editor", function ()
 
   it ("cannot start without resource", function ()
     local Editor = require "cosy.editor"
+    local token  = make_token (identities.rahan)
+    local _, status = Http.request {
+      url     = resource_url,
+      method  = "DELETE",
+      headers = {
+        Authorization = "Bearer " .. token,
+      },
+    }
+    assert.are.same (status, 204)
     local editor = Editor.create {
       api      = server_url,
       port     = 0,
