@@ -46,7 +46,6 @@ function Editor.create (options)
 end
 
 function Editor.start (editor)
-
   editor.last_access = Time ()
   local copas_addserver = Copas.addserver
   local addserver       = function (socket, f)
@@ -126,6 +125,7 @@ function Editor.start (editor)
     },
   }
   Copas.addserver = copas_addserver
+  Copas.loop ()
 end
 
 function Editor.stop (editor)
