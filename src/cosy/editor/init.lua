@@ -34,6 +34,7 @@ end
 
 function Editor.create (options)
   local result = setmetatable ({
+    ci       = options.ci or false,
     api      = assert (options.api),
     port     = assert (options.port),
     project  = assert (options.project),
@@ -111,11 +112,13 @@ function Editor.start (editor)
     -- end
   end
 
-  local _, status = request (Http, editor.url, {
-    method  = "HEAD",
-    headers = { Authorization = "Bearer " .. editor.token},
-  })
-  assert (status == 204, status)
+  if not editor.ci then
+    local _, status = request (Http, editor.url, {
+      method  = "HEAD",
+      headers = { Authorization = "Bearer " .. editor.token},
+    })
+    assert (status == 204, status)
+  end
   Copas.addserver = addserver
   editor.server = Websocket.server.copas.listen {
     port      = editor.port,
@@ -135,11 +138,13 @@ function Editor.stop (editor)
       time     = os.date "%c",
     })))
     editor.server:close ()
-    local _, status = request (CHttp, editor.url .. "/editor", {
-      method = "DELETE",
-      headers = { Authorization = "Bearer " .. editor.token }
-    })
-    assert (status == 204)
+    if not editor.ci then
+      local _, status = request (CHttp, editor.url .. "/editor", {
+        method = "DELETE",
+        headers = { Authorization = "Bearer " .. editor.token }
+      })
+      assert (status == 204)
+    end
   end)
 end
 
