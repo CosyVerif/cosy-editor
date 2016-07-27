@@ -34,15 +34,16 @@ end
 
 function Editor.create (options)
   local result = setmetatable ({
-    ci       = options.ci or false,
-    api      = assert (options.api),
+    api      = options.api or false,
     port     = assert (options.port),
     project  = assert (options.project),
     resource = assert (options.resource),
     timeout  = assert (options.timeout),
     token    = assert (options.token),
   }, Editor)
-  result.url = Et.render ("<%- api %>/projects/<%- project %>/resources/<%- resource %>", result)
+  if result.api then
+    result.url = Et.render ("<%- api %>/projects/<%- project %>/resources/<%- resource %>", result)
+  end
   return result
 end
 
@@ -112,7 +113,7 @@ function Editor.start (editor)
     -- end
   end
 
-  if not editor.ci then
+  if editor.url then
     local _, status = request (Http, editor.url, {
       method  = "HEAD",
       headers = { Authorization = "Bearer " .. editor.token},
@@ -138,7 +139,7 @@ function Editor.stop (editor)
       time     = os.date "%c",
     })))
     editor.server:close ()
-    if not editor.ci then
+    if editor.url then
       local _, status = request (CHttp, editor.url .. "/editor", {
         method = "DELETE",
         headers = { Authorization = "Bearer " .. editor.token }

@@ -32,9 +32,6 @@ parser:option "--timeout" {
   default     = "60",
   convert     = tonumber,
 }
-parser:flag "--ci" {
-  description = "do not connect to server (in continuous integration)",
-}
 
 local arguments = parser:parse ()
 local editor    = Editor.create (arguments)
