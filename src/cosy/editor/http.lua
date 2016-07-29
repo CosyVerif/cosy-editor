@@ -5,7 +5,7 @@ local Https = require "ssl.https"
 
 local M = {}
 
-function M.request (options)
+function M.json (options)
   assert (type (options) == "table")
   local result = {}
   options.sink    = Ltn12.sink.table (result)
@@ -13,6 +13,8 @@ function M.request (options)
   options.source  = options.body and Ltn12.source.string (options.body)
   options.headers = options.headers or {}
   options.headers ["Content-length"] = options.body and #options.body or 0
+  options.headers ["Content-type"  ] = options.body and "application/json"
+  options.headers ["Accept"        ] = "application/json"
   local http = options.url:match "https://"
            and Https
             or Http

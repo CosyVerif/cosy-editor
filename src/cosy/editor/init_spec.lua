@@ -42,7 +42,6 @@ local function make_token (subject, contents, duration)
   })
 end
 
-
 local branch
 do
   local file = assert (io.popen ("git rev-parse --abbrev-ref HEAD", "r"))
@@ -64,7 +63,7 @@ describe ("editor", function ()
     local api = url .. "/api/app/v1"
     -- Create service:
     local id  = branch .. "-" .. Hashids.new (tostring (os.time ())):encode (666)
-    local stack, stack_status = Http.request {
+    local stack, stack_status = Http.json {
       url     = api .. "/stack/",
       method  = "POST",
       headers = headers,
@@ -107,7 +106,7 @@ describe ("editor", function ()
     assert (stack_status == 201)
     -- Start service:
     local resource = url .. stack.resource_uri
-    local _, started_status = Http.request {
+    local _, started_status = Http.json {
       url        = resource .. "start/",
       method     = "POST",
       headers    = headers,
@@ -121,7 +120,7 @@ describe ("editor", function ()
       else
         os.execute "sleep 1"
       end
-      local result, status = Http.request {
+      local result, status = Http.json {
         url     = resource,
         method  = "GET",
         headers = headers,
@@ -130,14 +129,14 @@ describe ("editor", function ()
       services = result.services
     until result.state:lower () == "running"
     for _, path in ipairs (services) do
-      local service, service_status = Http.request {
+      local service, service_status = Http.json {
         url     = url .. path,
         method  = "GET",
         headers = headers,
       }
       assert (service_status == 200)
       if service.name == "api" then
-        local container, container_status = Http.request {
+        local container, container_status = Http.json {
           url     = url .. service.containers [1],
           method  = "GET",
           headers = headers,
@@ -148,8 +147,6 @@ describe ("editor", function ()
           local endpoint = port.endpoint_uri
           if endpoint and endpoint ~= Json.null then
             server_url = endpoint
-            print ("server url", server_url)
-            print ("docker url", docker_url)
             return
           end
         end
@@ -159,7 +156,7 @@ describe ("editor", function ()
   end)
 
   teardown (function ()
-    local _, deleted_status = Http.request {
+    local _, deleted_status = Http.json {
       url     = docker_url,
       method  = "DELETE",
       headers = headers,
@@ -171,7 +168,7 @@ describe ("editor", function ()
 
   before_each (function ()
     local token = make_token (identities.rahan)
-    local result, status = Http.request {
+    local result, status = Http.json {
       url     = server_url .. "/projects",
       method  = "POST",
       headers = {
@@ -181,7 +178,7 @@ describe ("editor", function ()
     assert.are.same (status, 201)
     project = result.id
     project_url = server_url .. "/projects/" .. project
-    result, status = Http.request {
+    result, status = Http.json {
       url     = project_url .. "/resources",
       method  = "POST",
       headers = {
@@ -218,7 +215,7 @@ describe ("editor", function ()
   it ("cannot start without resource", function ()
     local Editor = require "cosy.editor"
     local token  = make_token (identities.rahan)
-    local _, status = Http.request {
+    local _, status = Http.json {
       url     = resource_url,
       method  = "DELETE",
       headers = {
