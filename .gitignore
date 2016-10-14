@@ -1,7 +1,3 @@
-# Test stuff:
-coverage/
-output/
-luacov.*
-
-.environment
+.wercker
+rockspec/*.src.rock
 ENVIRONMENT
