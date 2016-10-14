@@ -147,7 +147,18 @@ describe ("editor", function ()
           local endpoint = port.endpoint_uri
           if endpoint and endpoint ~= Json.null then
             server_url = endpoint
-            return
+            for _ = 1, 5 do
+              local _, status = Http.json {
+                url     = server_url,
+                method  = "GET",
+              }
+              if status == 200 then
+                return
+              else
+                os.execute "sleep 1"
+              end
+            end
+            assert (false)
           end
         end
       end
@@ -156,12 +167,18 @@ describe ("editor", function ()
   end)
 
   teardown (function ()
-    local _, deleted_status = Http.json {
-      url     = docker_url,
-      method  = "DELETE",
-      headers = headers,
-    }
-    assert (deleted_status == 202, deleted_status)
+    while true do
+      local _, deleted_status = Http.json {
+        url     = docker_url,
+        method  = "DELETE",
+        headers = headers,
+      }
+      if deleted_status == 202 or deleted_status == 404 then
+        break
+      else
+        os.execute "sleep 1"
+      end
+    end
   end)
 
   local project, resource, project_url, resource_url

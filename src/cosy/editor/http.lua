@@ -1,5 +1,6 @@
 local Ltn12 = require "ltn12"
 local Json  = require "cjson"
+local Httpc = require "copas.http"
 local Http  = require "socket.http"
 local Https = require "ssl.https"
 
@@ -15,9 +16,14 @@ function M.json (options)
   options.headers ["Content-length"] = options.body and #options.body or 0
   options.headers ["Content-type"  ] = options.body and "application/json"
   options.headers ["Accept"        ] = "application/json"
-  local http = options.url:match "https://"
+  local http
+  if options.copas then
+    http = Httpc
+  else
+    http = options.url:match "https://"
            and Https
             or Http
+  end
   local _, status, _, _ = http.request (options)
   result = #result ~= 0
        and Json.decode (table.concat (result))
