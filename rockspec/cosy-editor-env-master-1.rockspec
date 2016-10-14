@@ -1,7 +1,8 @@
 package = "cosy-editor-env"
 version = "master-1"
 source  = {
-  url = "git+https://github.com/cosyverif/editor.git",
+  url    = "git+https://github.com/cosyverif/editor.git",
+  branch = "master",
 }
 
 description = {
