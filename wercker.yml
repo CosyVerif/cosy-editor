@@ -1,26 +1,56 @@
-box: debian:testing
+box: cosyverif/lua-environments
 build:
   steps:
     - script:
-        name: "install dependencies"
+        name: "install"
         code: |
-          apt-get  update  --yes
-          apt-get  install --yes git curl libssl-dev luarocks
-          luarocks install luasec
-          luarocks make rockspec/cosy-editor-env-master-1.rockspec
-          luarocks make rockspec/cosy-editor-master-1.rockspec
+          for dir in /lua/*; do
+            if [ -d "${dir}" ]; then
+              "${dir}/bin/luarocks" install compat52 || true
+              "${dir}/bin/luarocks" make rockspec/cosy-editor-env-master-1.rockspec
+              "${dir}/bin/luarocks" make rockspec/cosy-editor-master-1.rockspec
+            fi
+          done
     - script:
-        name: "check and test"
+        name: "check"
         code: |
-          cosy-check-editor
+          luacheck src/
+    - script:
+        name: "test"
+        code: |
+          for dir in /lua/lua*; do
+            if [ -d "${dir}" ]; then
+              echo "${dir}"
+              "${dir}/bin/busted" src/
+            fi
+          done
+    - script:
+        name: "upload to luarocks"
+        code: |
+          if [ "${WERCKER_GIT_BRANCH}" = "master" ]; then
+            tag=$(git describe --tags --abbrev=0 || echo "0.0")
+            count=$(git rev-list --count HEAD ^"${tag}" || git rev-list --count HEAD)
+          else
+            tag="${WERCKER_GIT_BRANCH}"
+            count=$(git rev-list --count HEAD ^"${tag}" || git rev-list --count HEAD)
+          fi
+          cd rockspec || exit 1
+          sed -e "s/master-1/${tag}-${count}/" \
+              -e "s/master/${tag}/" \
+            "cosy-editor-master-1.rockspec" \
+            > "cosy-editor-${tag}-${count}.rockspec"
+          luarocks upload \
+            --force \
+            --api-key="${LUAROCKS_TOKEN}" \
+            "cosy-editor-${tag}-${count}.rockspec"
+          cd ..
   after-steps:
     - script:
         name: "export to coveralls"
         code: |
-          ./bin/coveralls
-deploy:
-  luarocks:
-    - script:
-        name: "upload to luarocks"
-        code: |
-          ./bin/upload
+          luacov-coveralls \
+            --repo-token "${COVERALLS_TOKEN}" \
+            --exclude share --exclude busted --exclude _spec \
+            --include cosy \
+            --root src/ \
+            --service-name "${WERCKER_GIT_BRANCH}"
