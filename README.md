@@ -1,5 +1,5 @@
-[![wercker status](https://app.wercker.com/status/db362217b1cd23043f2715dbee08ca5d/s/dev "wercker status")](https://app.wercker.com/project/bykey/db362217b1cd23043f2715dbee08ca5d)
-[![Coverage Status](https://coveralls.io/repos/github/saucisson/cosy-editor/badge.svg?branch=HEAD)](https://coveralls.io/github/saucisson/cosy-editor?branch=HEAD)
-[![Join the chat at https://gitter.im/saucisson/cosy-editor](https://badges.gitter.im/saucisson/cosy-editor.svg)](https://gitter.im/saucisson/cosy-editor?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+[![Build status](https://app.wercker.com/status/90322c0e362abbee59b5e28935303e84/s/master "wercker status")](https://app.wercker.com/project/byKey/90322c0e362abbee59b5e28935303e84)
+[![Coverage Status](https://coveralls.io/repos/github/cosyverif/editor/badge.svg)](https://coveralls.io/github/cosyverif/editor)
+[![Chat](https://badges.gitter.im/cosyverif/editor.svg)](https://gitter.im/cosyverif/editor?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 # cosy-editor
