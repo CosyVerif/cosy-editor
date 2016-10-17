@@ -2,11 +2,22 @@ box: cosyverif/lua-environments
 build:
   steps:
     - script:
+        name: "restrict"
+        code: |
+          rm -rf /lua/lua51-*
+          rm -rf /lua/lua52-*
+          rm -rf /lua/lua53-*
+          rm -rf /lua/luajit20-*
+          rm -rf /lua/luajit21-none
+          rm -rf /lua/luajit21-51
+          rm -rf /lua/luajit21-52
+    - script:
         name: "install"
         code: |
           for dir in /lua/*; do
             if [ -d "${dir}" ]; then
               "${dir}/bin/luarocks" install compat52 || true
+              "${dir}/bin/luarocks" install https://raw.githubusercontent.com/un-def/hashids.lua/master/hashids-1.0.2-1.rockspec
               "${dir}/bin/luarocks" make rockspec/cosy-editor-env-master-1.rockspec
               "${dir}/bin/luarocks" make rockspec/cosy-editor-master-1.rockspec
             fi

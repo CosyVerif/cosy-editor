@@ -6,6 +6,7 @@ RUN apt-get  update  --yes
 RUN apt-get  install --yes git libssl-dev luajit luarocks
 RUN luarocks install luasec
 RUN cd /src/cosy/editor/ && \
+    luarocks install https://raw.githubusercontent.com/un-def/hashids.lua/master/hashids-1.0.2-1.rockspec
     luarocks make rockspec/cosy-editor-master-1.rockspec && \
     cd /
 RUN cd /src/cosy/editor/ && \

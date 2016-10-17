@@ -19,6 +19,7 @@ dependencies = {
   "ansicolors",
   "busted",
   "copas",
+  "cosy-server",
   "cluacov",
   "etlua",
   "hashids",
