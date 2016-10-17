@@ -71,11 +71,11 @@ function Editor.start (editor)
     local url = "ws://" .. editor.host .. ":" .. tostring (editor.port)
     Copas.addthread (function ()
       while editor.running do
-        Copas.sleep (1)
         if editor.last_access + editor.timeout <= Time () then
           editor:stop ()
           return
         end
+        Copas.sleep (1)
       end
     end)
     print (Colors (Et.render ("%{blue}[<%= time %>]%{reset} Start editor for %{green}<%= resource %>%{reset} at %{green}<%= url %>%{reset}.", {
@@ -84,7 +84,6 @@ function Editor.start (editor)
       url      = url,
     })))
   end
-
   local function handler (ws)
     print (Colors (Et.render ("%{blue}[<%= time %>]%{reset} New connection for %{green}<%= resource %>%{reset}.", {
       resource = editor.resource,
@@ -161,7 +160,6 @@ function Editor.start (editor)
       end
     end
   end
-
   editor.worker = Copas.addthread (function ()
     while editor.running do
       xpcall (function ()
@@ -230,7 +228,6 @@ function Editor.start (editor)
       end)
     end
   end)
-
   if editor.url then
     local resource, status = Http.json {
       url     = editor.url,
@@ -239,10 +236,10 @@ function Editor.start (editor)
     }
     assert (status == 200, status)
     local loaded
-    if loadstring then
-      loaded = assert (loadstring (resource.data))
+    if _G.loadstring then
+      loaded = assert (_G.loadstring (resource.data))
     else
-      loaded = assert (load (resource.data, nil, "t"))
+      loaded = assert (_G.load (resource.data, nil, "t"))
     end
     local layer, ref = editor.Layer.new {}
     loaded (editor.Layer, layer, ref)
@@ -267,7 +264,6 @@ function Editor.start (editor)
     },
   }
   Copas.addserver = copas_addserver
-  Copas.loop ()
 end
 
 function Editor.stop (editor)
@@ -293,10 +289,10 @@ end
 
 function Editor.load (editor, patch)
   local loaded, ok, err
-  if loadstring then
-    loaded, err = loadstring (patch)
+  if _G.loadstring then
+    loaded, err = _G.loadstring (patch)
   else
-    loaded, err = load (patch, nil, "t")
+    loaded, err = _G.load (patch, nil, "t")
   end
   if not loaded then
     return nil, err
