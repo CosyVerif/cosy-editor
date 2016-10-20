@@ -90,19 +90,29 @@ function Editor.start (editor)
       time     = os.date "%c",
     })))
     while editor.running do
+      local ok
       local message = ws:receive ()
       if not message then
+        ws:close ()
         return
       end
-      message = Json.decode (message)
-      if not message or type (message) ~= "table" then
+      editor.last_access = Time ()
+      ok, message = pcall (Json.decode, message)
+      if not ok then
         ws:send (Json.encode {
           type    = "answer",
           success = false,
           reason  = "invalid JSON",
         })
-      elseif not message.type or not message.id then
+      elseif type (message) ~= "table" then
         ws:send (Json.encode {
+          type    = "answer",
+          success = false,
+          reason  = "invalid message",
+        })
+      elseif not message.id or not message.type then
+        ws:send (Json.encode {
+          id      = message.id,
           type    = "answer",
           success = false,
           reason  = "invalid message",
@@ -153,6 +163,7 @@ function Editor.start (editor)
         end
       else
         ws:send (Json.encode {
+          id      = message.id,
           type    = "answer",
           success = false,
           reason  = "invalid message",
@@ -177,8 +188,9 @@ function Editor.start (editor)
               body    = {
                 patches = { message.patch },
                 data    = editor.data,
+                editor  = editor.token,
               },
-              headers = { Authorization = "Bearer " .. info.token},
+              headers = { Authorization = "Bearer " .. tostring (info.token) },
             }
             if status == 204 then
               editor.Layer.merge (layer, editor.layer)
@@ -251,40 +263,32 @@ function Editor.start (editor)
     port      = editor.port,
     default   = handler,
     protocols = {
-      cosy = function (ws)
-        xpcall (function ()
-          handler (ws)
-        end, function (err)
-          print (err, debug.traceback ())
-          ws:send (Json.encode {
-            success = false,
-          })
-        end)
-      end,
+      cosy = handler,
     },
   }
   Copas.addserver = copas_addserver
 end
 
 function Editor.stop (editor)
-  Copas.addthread (function ()
-    editor.running = false
-    print (Colors (Et.render ("%{blue}[<%= time %>]%{reset} Stop editor for %{green}<%= resource %>.", {
-      resource = editor.resource,
-      time     = os.date "%c",
-    })))
-    editor.server:close ()
-    if editor.url then
-      local _, status = Http.json {
-        copas   = true,
-        url     = editor.url .. "/editor",
-        method  = "DELETE",
-        headers = { Authorization = "Bearer " .. editor.token }
-      }
-      assert (status == 202)
-    end
-    Copas.wakeup (editor.worker)
-  end)
+  editor.stopper = editor.stopper or
+    Copas.addthread (function ()
+      editor.running = false
+      print (Colors (Et.render ("%{blue}[<%= time %>]%{reset} Stop editor for %{green}<%= resource %>.", {
+        resource = editor.resource,
+        time     = os.date "%c",
+      })))
+      editor.server:close ()
+      if editor.url then
+        local _, status = Http.json {
+          copas   = true,
+          url     = editor.url .. "/editor",
+          method  = "DELETE",
+          headers = { Authorization = "Bearer " .. editor.token }
+        }
+        assert (status == 202)
+      end
+      Copas.wakeup (editor.worker)
+    end)
 end
 
 function Editor.load (editor, patch)
@@ -297,8 +301,12 @@ function Editor.load (editor, patch)
   if not loaded then
     return nil, err
   end
+  ok, loaded = pcall (loaded)
+  if not ok then
+    return nil, loaded
+  end
   local current, ref = editor.Layer.new {
-    [editor.Layer.refines] = {
+    [editor.Layer.key.refines] = {
       editor.layer,
     }
   }
