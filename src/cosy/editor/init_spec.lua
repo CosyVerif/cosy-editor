@@ -416,6 +416,150 @@ describe ("editor", function ()
       assert.is_falsy  (answers.naouna [4].success)
     end)
 
+    it ("correctly loads dependencies", function ()
+      local answers        = {}
+      local token          = make_token (identities.crao)
+      local result, status = Http.json {
+        url     = server_url .. "/projects",
+        method  = "POST",
+        headers = {
+          Authorization = "Bearer " .. token,
+        },
+      }
+      assert.are.same (status, 201)
+      local crao_project     = result.id
+      local crao_project_url = server_url .. "/projects/" .. crao_project
+      result, status = Http.json {
+        url     = crao_project_url .. "/resources",
+        method  = "POST",
+        headers = {
+          Authorization = "Bearer " .. token,
+        },
+      }
+      assert.are.same (status, 201)
+      local crao_resource = result.id
+      local _
+      _, status = Http.json {
+        url     = crao_project_url .. "/permissions/" .. project,
+        method  = "PUT",
+        body    = { permission = "read" },
+        headers = {
+          Authorization = "Bearer " .. token,
+        },
+      }
+      assert.is_truthy (status == 201 or status == 202)
+      Copas.addthread (function ()
+        Copas.sleep (1)
+        local url = Et.render ("ws://<%- host %>:<%- port %>", {
+          host = editor.host,
+          port = editor.port,
+        })
+        local client = Websocket.client.copas { timeout = 5 }
+        client:connect (url, "cosy")
+        client:send (Json.encode {
+          id    = 1,
+          type  = "authenticate",
+          user  = users.rahan,
+          token = make_token (identities.rahan),
+        })
+        answers [#answers+1] = client:receive ()
+        answers [#answers+1] = client:receive ()
+        client:send (Json.encode {
+          id    = 2,
+          type  = "patch",
+          patch = Et.render ([[
+            return function (Layer)
+              local dependency = Layer.require "<%- project %>/<%- resource %>"
+            end
+          ]], {
+            project  = crao_project,
+            resource = crao_resource,
+          }),
+        })
+        answers [#answers+1] = client:receive ()
+        editor:stop ()
+      end)
+      Copas.loop ()
+      for i, answer in ipairs (answers) do
+        answers [i] = Json.decode (answer)
+      end
+      assert.is_truthy (answers [1].success)
+      assert.is_truthy (answers [2].type == "update")
+      assert.is_truthy (answers [3].success)
+    end)
+
+    it ("fails at loading unreadable dependencies", function ()
+      local answers        = {}
+      local token          = make_token (identities.crao)
+      local result, status = Http.json {
+        url     = server_url .. "/projects",
+        method  = "POST",
+        headers = {
+          Authorization = "Bearer " .. token,
+        },
+      }
+      assert.are.same (status, 201)
+      local crao_project     = result.id
+      local crao_project_url = server_url .. "/projects/" .. crao_project
+      result, status = Http.json {
+        url     = crao_project_url .. "/resources",
+        method  = "POST",
+        headers = {
+          Authorization = "Bearer " .. token,
+        },
+      }
+      assert.are.same (status, 201)
+      local crao_resource = result.id
+      local _
+      _, status = Http.json {
+        url     = crao_project_url .. "/permissions/" .. project,
+        method  = "PUT",
+        body    = { permission = "none" },
+        headers = {
+          Authorization = "Bearer " .. token,
+        },
+      }
+      assert.is_truthy (status == 201 or status == 202)
+      Copas.addthread (function ()
+        Copas.sleep (1)
+        local url = Et.render ("ws://<%- host %>:<%- port %>", {
+          host = editor.host,
+          port = editor.port,
+        })
+        local client = Websocket.client.copas { timeout = 5 }
+        client:connect (url, "cosy")
+        client:send (Json.encode {
+          id    = 1,
+          type  = "authenticate",
+          user  = users.rahan,
+          token = make_token (identities.rahan),
+        })
+        answers [#answers+1] = client:receive ()
+        answers [#answers+1] = client:receive ()
+        client:send (Json.encode {
+          id    = 2,
+          type  = "patch",
+          patch = Et.render ([[
+            return function (Layer)
+              local dependency = Layer.require "<%- project %>/<%- resource %>"
+            end
+          ]], {
+            project  = crao_project,
+            resource = crao_resource,
+          }),
+        })
+        answers [#answers+1] = client:receive ()
+        editor:stop ()
+      end)
+      Copas.loop ()
+      for i, answer in ipairs (answers) do
+        answers [i] = Json.decode (answer)
+      end
+      assert.is_truthy (answers [1].success)
+      assert.is_truthy (answers [2].type == "update")
+      assert.is_falsy  (answers [3].success)
+    end)
+
   end)
 
 end)

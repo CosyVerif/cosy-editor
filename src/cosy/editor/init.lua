@@ -12,6 +12,7 @@ local Http      = require "cosy.editor.http"
 -- { id = ..., type = "patch"       , patch = "..." }
 -- { id = ..., type = "answer"      , success = true|false, reason = "..." }
 -- { id = ..., type = "update"      , patch = "...", origin = "user" }
+-- { id = ..., type = "execute" }
 
 local Editor = {}
 Editor.__index = Editor
@@ -37,14 +38,43 @@ function Editor.create (options)
       local loaded = Layer.loaded [name]
       if loaded then
         return loaded, Layer.Reference.new (loaded)
+      elseif pcall (require, name) then
+        local layer, ref = editor:load (require (name))
+        Layer.loaded [name] = layer
+        return layer, ref
       else
+        local project, resource = name:match "^(%w+)/(%w+)$"
+        local url
+        if project then
+          url = Et.render ("<%- api %>/projects/<%- project %>/resources/<%- resource %>", {
+            api      = editor.api,
+            project  = project,
+            resource = resource,
+          })
+        else
+          local _, status, headers = Http.json {
+            copas    = true,
+            url      = Et.render ("<%- api %>/aliases/<%- alias %>", {
+              api   = editor.api,
+              alias = name,
+            }),
+            method   = "GET",
+            redirect = false,
+            headers  = { Authorization = "Bearer " .. tostring (editor.token) },
+          }
+          if status == 302 then
+            url = headers.location
+          else
+            error (status)
+          end
+        end
         local result, status = Http.json {
           copas   = true,
-          url     = editor.api .. "/" .. name,
+          url     = url,
           method  = "GET",
           headers = { Authorization = "Bearer " .. tostring (editor.token) },
         }
-        if status == 204 then
+        if status == 200 then
           local layer, ref = editor:load (result.data)
           Layer.loaded [name] = layer
           return layer, ref
@@ -293,17 +323,24 @@ end
 
 function Editor.load (editor, patch)
   local loaded, ok, err
-  if _G.loadstring then
-    loaded, err = _G.loadstring (patch)
-  else
-    loaded, err = _G.load (patch, nil, "t")
+  if type (patch) == "string" then
+    if _G.loadstring then
+      loaded, err = _G.loadstring (patch)
+    else
+      loaded, err = _G.load (patch, nil, "t")
+    end
+    if not loaded then
+      return nil, err
+    end
+    ok, loaded = pcall (loaded)
+    if not ok then
+      return nil, loaded
+    end
+  elseif type (patch) == "function" then
+    loaded = patch
   end
   if not loaded then
-    return nil, err
-  end
-  ok, loaded = pcall (loaded)
-  if not ok then
-    return nil, loaded
+    return nil, "no patch"
   end
   local current, ref = editor.Layer.new {
     [editor.Layer.key.refines] = {

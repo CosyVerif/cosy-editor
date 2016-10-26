@@ -24,10 +24,10 @@ function M.json (options)
            and Https
             or Http
   end
-  local _, status, _, _ = http.request (options)
+  local _, status, headers = http.request (options)
   result = #result ~= 0
        and Json.decode (table.concat (result))
-  return result, status
+  return result, status, headers
 end
 
 return M
