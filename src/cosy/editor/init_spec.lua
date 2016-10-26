@@ -488,6 +488,54 @@ describe ("editor", function ()
       assert.is_truthy (answers [3].success)
     end)
 
+    it ("correctly loads aliased dependencies", function ()
+      local token = make_token (identities.rahan)
+      local _, status = Http.json {
+        url     = resource_url .. "/aliases/my.resource",
+        method  = "PUT",
+        headers = {
+          Authorization = "Bearer " .. token,
+        },
+      }
+      assert.are.same (status, 201)
+      local answers = {}
+      Copas.addthread (function ()
+        Copas.sleep (1)
+        local url = Et.render ("ws://<%- host %>:<%- port %>", {
+          host = editor.host,
+          port = editor.port,
+        })
+        local client = Websocket.client.copas { timeout = 5 }
+        client:connect (url, "cosy")
+        client:send (Json.encode {
+          id    = 1,
+          type  = "authenticate",
+          user  = users.rahan,
+          token = make_token (identities.rahan),
+        })
+        answers [#answers+1] = client:receive ()
+        answers [#answers+1] = client:receive ()
+        client:send (Json.encode {
+          id    = 2,
+          type  = "patch",
+          patch = Et.render ([[
+            return function (Layer)
+              local dependency = Layer.require "my.resource"
+            end
+          ]]),
+        })
+        answers [#answers+1] = client:receive ()
+        editor:stop ()
+      end)
+      Copas.loop ()
+      for i, answer in ipairs (answers) do
+        answers [i] = Json.decode (answer)
+      end
+      assert.is_truthy (answers [1].success)
+      assert.is_truthy (answers [2].type == "update")
+      assert.is_truthy (answers [3].success)
+    end)
+
     it ("fails at loading unreadable dependencies", function ()
       local answers        = {}
       local token          = make_token (identities.crao)
