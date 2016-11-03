@@ -19,18 +19,19 @@ Editor.__index = Editor
 
 function Editor.create (options)
   local editor = setmetatable ({
-    running  = true,
-    api      = options.api or false,
-    port     = assert (options.port),
-    project  = assert (options.project),
-    resource = assert (options.resource),
-    timeout  = assert (options.timeout),
-    token    = assert (options.token),
-    clients  = setmetatable ({}, { __mode = "k" }),
-    queue    = {},
-    Layer    = Layer,
-    data     = nil,
-    layer    = nil,
+    running   = true,
+    connected = 0,
+    api       = options.api or false,
+    port      = assert (options.port),
+    project   = assert (options.project),
+    resource  = assert (options.resource),
+    timeout   = assert (options.timeout),
+    token     = assert (options.token),
+    clients   = setmetatable ({}, { __mode = "k" }),
+    queue     = {},
+    Layer     = Layer,
+    data      = nil,
+    layer     = nil,
   }, Editor)
   if editor.api then
     editor.url = Et.render ("<%- api %>/projects/<%- project %>/resources/<%- resource %>", editor)
@@ -98,20 +99,10 @@ function Editor.start (editor)
     editor.socket = socket
     editor.host, editor.port = socket:getsockname ()
     copas_addserver (socket, f)
-    local url = "ws://" .. editor.host .. ":" .. tostring (editor.port)
-    Copas.addthread (function ()
-      while editor.running do
-        if editor.last_access + editor.timeout <= Time () then
-          editor:stop ()
-          return
-        end
-        Copas.sleep (1)
-      end
-    end)
     print (Colors (Et.render ("%{blue}[<%= time %>]%{reset} Start editor for %{green}<%= resource %>%{reset} at %{green}<%= url %>%{reset}.", {
       resource = editor.resource,
       time     = os.date "%c",
-      url      = url,
+      url      = "ws://" .. editor.host .. ":" .. tostring (editor.port),
     })))
   end
   local function handler (ws)
@@ -148,11 +139,11 @@ function Editor.start (editor)
           reason  = "invalid message",
         })
       elseif message.type == "authenticate" then
-        local _, status = Http.json {
+      local   _, status = Http.json {
           copas   = true,
           url     = editor.url,
           method  = "HEAD",
-          headers = { Authorization = "Bearer " .. tostring (message.token) },
+          headers = { Authorization = message.token and "Bearer " .. tostring (message.token) },
         }
         if status == 204 then
           ws:send (Json.encode {
@@ -179,18 +170,10 @@ function Editor.start (editor)
           })
         end
       elseif message.type == "patch" then
-        if editor.clients [ws] then
-          message.client = ws
-          editor.queue [#editor.queue+1] = message
-          Copas.wakeup (editor.worker)
-        else
-          ws:send (Json.encode {
-            id      = message.id,
-            type    = "answer",
-            success = false,
-            reason  = "authentication failure",
-          })
-        end
+        message.client = ws
+        message.info   = editor.clients [ws]
+        editor.queue [#editor.queue+1] = message
+        Copas.wakeup (editor.worker)
       else
         ws:send (Json.encode {
           id      = message.id,
@@ -209,57 +192,65 @@ function Editor.start (editor)
           table.remove (editor.queue, 1)
           assert (message.type == "patch")
           local layer = editor:load (message.patch)
-          if layer then
-            local info = editor.clients [message.client]
-            local _, status = Http.json {
-              copas   = true,
-              url     = editor.url,
-              method  = "PATCH",
-              body    = {
-                patches = { message.patch },
-                data    = editor.data,
-                editor  = editor.token,
-              },
-              headers = { Authorization = "Bearer " .. tostring (info.token) },
-            }
-            if status == 204 then
-              editor.Layer.merge (layer, editor.layer)
-              editor.data = editor.Layer.dump (editor.layer)
-              message.client:send (Json.encode {
-                id      = message.id,
-                type    = "answer",
-                success = true,
-              })
-              for client in pairs (editor.clients) do
-                if client ~= message.client then
-                  client:send (Json.encode {
-                    type   = "update",
-                    patch  = message.patch,
-                    origin = info.user,
-                  })
-                end
-              end
-            elseif status == 403 then
-              message.client:send (Json.encode {
-                id      = message.id,
-                type    = "answer",
-                success = false,
-                reason  = "forbidden",
-              })
-            else
-              message.client:send (Json.encode {
-                id      = message.id,
-                type    = "answer",
-                success = false,
-                reason  = status,
-              })
-            end
-          else
+          if not layer then
             message.client:send (Json.encode {
               id      = message.id,
               type    = "answer",
               success = false,
               reason  = "invalid layer",
+            })
+            return
+          end
+          if not message.info then
+            message.client:send (Json.encode {
+              id      = message.id,
+              type    = "answer",
+              success = false,
+              reason  = "not authentified",
+            })
+            return
+          end
+          local _, status = Http.json {
+            copas   = true,
+            url     = editor.url,
+            method  = "PATCH",
+            body    = {
+              patches = { message.patch },
+              data    = editor.data,
+              editor  = editor.token,
+            },
+            headers = { Authorization = message.info.token and "Bearer " .. tostring (message.info.token) },
+          }
+          if status == 204 then
+            editor.Layer.merge (layer, editor.layer)
+            editor.data = editor.Layer.dump (editor.layer)
+            message.client:send (Json.encode {
+              id      = message.id,
+              type    = "answer",
+              success = true,
+            })
+            for client in pairs (editor.clients) do
+              if client ~= message.client then
+                client:send (Json.encode {
+                  type   = "update",
+                  patch  = message.patch,
+                  origin = message.info.user,
+                })
+              end
+            end
+          elseif status == 403 then
+            message.client:send (Json.encode {
+              id      = message.id,
+              type    = "answer",
+              success = false,
+              reason  = "forbidden",
+            })
+          else
+            message.client:send (Json.encode {
+              id      = message.id,
+              type    = "answer",
+              success = false,
+              reason  = status,
             })
           end
         else
@@ -268,6 +259,9 @@ function Editor.start (editor)
       end, function (err)
         print (err, debug.traceback ())
       end)
+      if editor.connected == 0 and #editor.queue == 0 then
+        editor:stop ()
+      end
     end
   end)
   if editor.url then
@@ -293,7 +287,14 @@ function Editor.start (editor)
     port      = editor.port,
     default   = handler,
     protocols = {
-      cosy = handler,
+      cosy = function (ws)
+        editor.connected = editor.connected + 1
+        pcall (handler, ws)
+        editor.connected = editor.connected - 1
+        if editor.connected == 0 and #editor.queue == 0 then
+          editor:stop ()
+        end
+      end,
     },
   }
   Copas.addserver = copas_addserver

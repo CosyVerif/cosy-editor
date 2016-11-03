@@ -195,9 +195,8 @@ describe ("editor", function ()
       editor:start ()
     end)
 
-    it ("can be started and stopped", function ()
+    it ("can be started and explicitly stopped", function ()
       Copas.addthread (function ()
-        Copas.sleep (1)
         editor:stop ()
       end)
       Copas.loop ()
@@ -213,7 +212,6 @@ describe ("editor", function ()
         })
         local client = Websocket.client.copas { timeout = 5 }
         connected    = client:connect (url, "cosy")
-        editor:stop ()
       end)
       Copas.loop ()
       assert.is_truthy (connected)
@@ -238,7 +236,6 @@ describe ("editor", function ()
         client:send (Json.encode { type = "type", id = "id" })
         answers [#answers+1] = client:receive ()
         client:close ()
-        editor:stop ()
       end)
       Copas.loop ()
       for i, answer in ipairs (answers) do
@@ -269,9 +266,7 @@ describe ("editor", function ()
     end)
 
     it ("checks read access on authentication", function ()
-      local answers = {
-        n = 0,
-      }
+      local answers = {}
       for name, user in pairs (users) do
         Copas.addthread (function ()
           Copas.sleep (1)
@@ -292,10 +287,6 @@ describe ("editor", function ()
             client:receive ()
           end
           client:close ()
-          answers.n = answers.n + 1
-          if answers.n == 3 then
-            editor:stop ()
-          end
         end)
       end
       Copas.loop ()
@@ -339,7 +330,6 @@ describe ("editor", function ()
         answers [#answers+1] = client:receive ()
         answers [#answers+1] = client:receive ()
         client:close ()
-        editor:stop ()
       end)
       Copas.loop ()
       for i, answer in ipairs (answers) do
@@ -354,9 +344,7 @@ describe ("editor", function ()
     end)
 
     it ("applies or denies patches depending on permissions", function ()
-      local answers = {
-        n = 0,
-      }
+      local answers = {}
       for name, user in pairs (users) do
         answers [name] = {}
         local my_answers = answers [name]
@@ -388,18 +376,12 @@ describe ("editor", function ()
             my_answers [#my_answers+1] = client:receive ()
           end
           client:close ()
-          answers.n = answers.n + 1
-          if answers.n == 3 then
-            editor:stop ()
-          end
         end)
       end
       Copas.loop ()
       for _, t in pairs (answers) do
-        if type (t) == "table" then
-          for i, answer in ipairs (t) do
-            t [i] = Json.decode (answer)
-          end
+        for i, answer in ipairs (t) do
+          t [i] = Json.decode (answer)
         end
       end
       assert.is_falsy  (answers.crao   [1].success)
@@ -477,7 +459,6 @@ describe ("editor", function ()
           }),
         })
         answers [#answers+1] = client:receive ()
-        editor:stop ()
       end)
       Copas.loop ()
       for i, answer in ipairs (answers) do
@@ -525,7 +506,6 @@ describe ("editor", function ()
           ]]),
         })
         answers [#answers+1] = client:receive ()
-        editor:stop ()
       end)
       Copas.loop ()
       for i, answer in ipairs (answers) do
@@ -597,7 +577,6 @@ describe ("editor", function ()
           }),
         })
         answers [#answers+1] = client:receive ()
-        editor:stop ()
       end)
       Copas.loop ()
       for i, answer in ipairs (answers) do
