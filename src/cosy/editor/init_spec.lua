@@ -1,3 +1,9 @@
+local oldprint = print
+_G.print = function (...)
+  oldprint (...)
+  io.stdout:flush ()
+end
+
 local assert    = require "luassert"
 local Copas     = require "copas"
 local Et        = require "etlua"
