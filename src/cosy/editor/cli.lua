@@ -1,4 +1,11 @@
+local oldprint = print
+_G.print = function (...)
+  oldprint (...)
+  io.stdout:flush ()
+end
+
 local Arguments = require "argparse"
+local Copas     = require "copas"
 local Url       = require "socket.url"
 local Editor    = require "cosy.editor"
 
@@ -28,3 +35,4 @@ parser:option "--port" {
 local arguments = parser:parse ()
 local editor    = Editor.create (arguments)
 editor:start ()
+Copas.loop ()
