@@ -269,22 +269,24 @@ function Editor.start (editor)
       end
     end
   end)
-  local resource, status = Http.json {
+  local ok, resource, status = pcall (Http.json, {
     url     = editor.resource.url,
     method  = "GET",
     headers = { Authorization = "Bearer " .. editor.token},
-  }
-  assert (status == 200, status)
-  local loaded
-  if _G.loadstring then
-    loaded = assert (_G.loadstring (resource.data))
-  else
-    loaded = assert (_G.load (resource.data, nil, "t"))
+  })
+  if ok then
+    assert (status == 200, status)
+    local loaded
+    if _G.loadstring then
+      loaded = assert (_G.loadstring (resource.data))
+    else
+      loaded = assert (_G.load (resource.data, nil, "t"))
+    end
+    local layer, ref = editor.Layer.new {}
+    loaded (editor.Layer, layer, ref)
+    editor.data  = resource.data
+    editor.layer = layer
   end
-  local layer, ref = editor.Layer.new {}
-  loaded (editor.Layer, layer, ref)
-  editor.data  = resource.data
-  editor.layer = layer
   Copas.addserver = addserver
   editor.server   = Websocket.server.copas.listen {
     port      = editor.port,
@@ -292,7 +294,11 @@ function Editor.start (editor)
     protocols = {
       cosy = function (ws)
         editor.connected = editor.connected + 1
-        pcall (handler, ws)
+        xpcall (function ()
+          handler (ws)
+        end, function (err)
+          print (err, debug.traceback ())
+        end)
         editor.connected = editor.connected - 1
         if editor.connected == 0 and #editor.queue == 0 then
           editor:stop ()
@@ -312,13 +318,12 @@ function Editor.stop (editor)
         time     = os.date "%c",
       })))
       editor.server:close ()
-      local _, status = Http.json {
+      pcall (Http.json, {
         copas   = true,
         url     = editor.resource.url .. "/editor",
         method  = "DELETE",
         headers = { Authorization = "Bearer " .. editor.token }
-      }
-      assert (status == 202)
+      })
       Copas.wakeup (editor.worker)
     end)
 end
