@@ -5,6 +5,7 @@ local Json      = require "cjson"
 local Layer     = require "layeredata"
 local Websocket = require "websocket"
 local Time      = require "socket".gettime
+local Url       = require "socket.url"
 local Http      = require "cosy.editor.http"
 
 -- Messages:
@@ -18,14 +19,21 @@ local Editor = {}
 Editor.__index = Editor
 
 function Editor.create (options)
+  local resource = Url.parse (options.resource)
+  resource.url   = options.resource
+  local api = {
+    scheme = resource.scheme,
+    host   = resource.host,
+    port   = resource.port,
+    path   = "/",
+  }
+  api.url = Url.build (api)
   local editor = setmetatable ({
     running   = true,
     connected = 0,
-    api       = options.api or false,
+    api       = api,
     port      = assert (options.port),
-    project   = assert (options.project),
-    resource  = assert (options.resource),
-    timeout   = assert (options.timeout),
+    resource  = resource,
     token     = assert (options.token),
     clients   = setmetatable ({}, { __mode = "k" }),
     queue     = {},
@@ -33,59 +41,56 @@ function Editor.create (options)
     data      = nil,
     layer     = nil,
   }, Editor)
-  if editor.api then
-    editor.url = Et.render ("<%- api %>/projects/<%- project %>/resources/<%- resource %>", editor)
-    Layer.require = function (name)
-      local loaded = Layer.loaded [name]
-      if loaded then
-        return loaded, Layer.Reference.new (loaded)
-      elseif pcall (require, name) then
-        local layer, ref = editor:load (require (name))
-        Layer.loaded [name] = layer
-        return layer, ref
+  Layer.require = function (name)
+    local loaded = Layer.loaded [name]
+    if loaded then
+      return loaded, Layer.Reference.new (loaded)
+    elseif pcall (require, name) then
+      local layer, ref = editor:load (require (name))
+      Layer.loaded [name] = layer
+      return layer, ref
+    else
+      local project_name, resource_name = name:match "^(%w+)/(%w+)$"
+      local url
+      if project_name then
+        url = Et.render ("<%- api %>/projects/<%- project %>/resources/<%- resource %>", {
+          api      = editor.api.url,
+          project  = project_name,
+          resource = resource_name,
+        })
       else
-        local project, resource = name:match "^(%w+)/(%w+)$"
-        local url
-        if project then
-          url = Et.render ("<%- api %>/projects/<%- project %>/resources/<%- resource %>", {
-            api      = editor.api,
-            project  = project,
-            resource = resource,
-          })
-        else
-          local _, status, headers = Http.json {
-            copas    = true,
-            url      = Et.render ("<%- api %>/aliases/<%- alias %>", {
-              api   = editor.api,
-              alias = name,
-            }),
-            method   = "GET",
-            redirect = false,
-            headers  = { Authorization = "Bearer " .. tostring (editor.token) },
-          }
-          if status == 302 then
-            url = headers.location
-          else
-            error (status)
-          end
-        end
-        local result, status = Http.json {
-          copas   = true,
-          url     = url,
-          method  = "GET",
-          headers = { Authorization = "Bearer " .. tostring (editor.token) },
+        local _, status, headers = Http.json {
+          copas    = true,
+          url      = Et.render ("<%- api %>/aliases/<%- alias %>", {
+            api   = editor.api.url,
+            alias = name,
+          }),
+          method   = "GET",
+          redirect = false,
+          headers  = { Authorization = "Bearer " .. tostring (editor.token) },
         }
-        if status == 200 then
-          local layer, ref = editor:load (result.data)
-          Layer.loaded [name] = layer
-          return layer, ref
-        elseif status == 404 then
-          error "not found"
-        elseif status == 403 then
-          error "forbidden"
+        if status == 302 then
+          url = headers.location
         else
           error (status)
         end
+      end
+      local result, status = Http.json {
+        copas   = true,
+        url     = url,
+        method  = "GET",
+        headers = { Authorization = "Bearer " .. tostring (editor.token) },
+      }
+      if status == 200 then
+        local layer, ref = editor:load (result.data)
+        Layer.loaded [name] = layer
+        return layer, ref
+      elseif status == 404 then
+        error "not found"
+      elseif status == 403 then
+        error "forbidden"
+      else
+        error (status)
       end
     end
   end
@@ -141,7 +146,7 @@ function Editor.start (editor)
       elseif message.type == "authenticate" then
       local   _, status = Http.json {
           copas   = true,
-          url     = editor.url,
+          url     = editor.resource.url,
           method  = "HEAD",
           headers = { Authorization = message.token and "Bearer " .. tostring (message.token) },
         }
@@ -158,7 +163,7 @@ function Editor.start (editor)
           ws:send (Json.encode {
             type   = "update",
             patch  = editor.data,
-            origin = editor.url,
+            origin = editor.resource.url,
           })
         else
           editor.clients [ws] = nil
@@ -212,7 +217,7 @@ function Editor.start (editor)
           end
           local _, status = Http.json {
             copas   = true,
-            url     = editor.url,
+            url     = editor.resource.url,
             method  = "PATCH",
             body    = {
               patches = { message.patch },
@@ -264,24 +269,22 @@ function Editor.start (editor)
       end
     end
   end)
-  if editor.url then
-    local resource, status = Http.json {
-      url     = editor.url,
-      method  = "GET",
-      headers = { Authorization = "Bearer " .. editor.token},
-    }
-    assert (status == 200, status)
-    local loaded
-    if _G.loadstring then
-      loaded = assert (_G.loadstring (resource.data))
-    else
-      loaded = assert (_G.load (resource.data, nil, "t"))
-    end
-    local layer, ref = editor.Layer.new {}
-    loaded (editor.Layer, layer, ref)
-    editor.data  = resource.data
-    editor.layer = layer
+  local resource, status = Http.json {
+    url     = editor.resource.url,
+    method  = "GET",
+    headers = { Authorization = "Bearer " .. editor.token},
+  }
+  assert (status == 200, status)
+  local loaded
+  if _G.loadstring then
+    loaded = assert (_G.loadstring (resource.data))
+  else
+    loaded = assert (_G.load (resource.data, nil, "t"))
   end
+  local layer, ref = editor.Layer.new {}
+  loaded (editor.Layer, layer, ref)
+  editor.data  = resource.data
+  editor.layer = layer
   Copas.addserver = addserver
   editor.server   = Websocket.server.copas.listen {
     port      = editor.port,
@@ -309,15 +312,13 @@ function Editor.stop (editor)
         time     = os.date "%c",
       })))
       editor.server:close ()
-      if editor.url then
-        local _, status = Http.json {
-          copas   = true,
-          url     = editor.url .. "/editor",
-          method  = "DELETE",
-          headers = { Authorization = "Bearer " .. editor.token }
-        }
-        assert (status == 202)
-      end
+      local _, status = Http.json {
+        copas   = true,
+        url     = editor.resource.url .. "/editor",
+        method  = "DELETE",
+        headers = { Authorization = "Bearer " .. editor.token }
+      }
+      assert (status == 202)
       Copas.wakeup (editor.worker)
     end)
 end

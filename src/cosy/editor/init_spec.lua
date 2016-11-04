@@ -138,11 +138,8 @@ describe ("editor", function ()
     assert.has.no.errors (function ()
       local Editor = require "cosy.editor"
       Editor.create {
-        api      = server_url,
+        resource = resource_url,
         port     = 0,
-        project  = project,
-        resource = resource,
-        timeout  = 60,
         token    = make_token (Et.render ("/projects/<%- project %>", {
           project  = project,
         }), {}, math.huge),
@@ -162,11 +159,8 @@ describe ("editor", function ()
     }
     assert.are.same (status, 204)
     local editor = Editor.create {
-      api      = server_url,
+      resource = resource_url,
       port     = 0,
-      project  = project,
-      resource = resource,
-      timeout  = 60,
       token    = make_token (Et.render ("/projects/<%- project %>", {
         project  = project,
       }), {}, math.huge),
@@ -183,11 +177,8 @@ describe ("editor", function ()
     before_each (function ()
       local Editor = require "cosy.editor"
       editor = Editor.create {
-        api      = server_url,
+        resource = resource_url,
         port     = 0,
-        project  = project,
-        resource = resource,
-        timeout  = 60,
         token    = make_token (Et.render ("/projects/<%- project %>", {
           project  = project,
         }), {}, math.huge),
