@@ -28,7 +28,7 @@ parser:option "--token" {
 }
 parser:option "--port" {
   description = "port",
-  default     = "0",
+  default     = "8080",
   convert     = tonumber,
 }
 
