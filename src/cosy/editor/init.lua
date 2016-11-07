@@ -127,6 +127,7 @@ function Editor.start (editor)
     editor.data  = resource.data
     editor.layer = layer
   end
+  editor.count    = 0
   editor.running  = true
   Copas.addserver = addserver
   editor.server   = Websocket.server.copas.listen {
