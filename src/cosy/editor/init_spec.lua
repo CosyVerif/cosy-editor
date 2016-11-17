@@ -15,6 +15,7 @@ local Http      = require "cosy.editor.http"
 local Instance  = require "cosy.server.instance"
 
 local Config = {
+  num_workers = 1,
   auth0       = {
     domain        = assert (os.getenv "AUTH0_DOMAIN"),
     client_id     = assert (os.getenv "AUTH0_ID"    ),
@@ -53,7 +54,7 @@ describe ("editor", function ()
   local instance, server_url
 
   setup (function ()
-    instance   = Instance.create ()
+    instance   = Instance.create (Config)
     server_url = instance.server
   end)
 
@@ -300,11 +301,16 @@ describe ("editor", function ()
         type    = "answer",
         success = true,
       })
+      answers.crao.reason.token = nil
+      answers.crao.reason.url   = nil
       assert.are.same (answers.crao, {
         id      = 1,
         type    = "answer",
         success = false,
-        reason  = "authentication failure",
+        reason  = {
+          result = false,
+          status = 403,
+        }
       })
     end)
 

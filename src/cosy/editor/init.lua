@@ -192,7 +192,7 @@ function Editor.dispatch (editor, ws)
       reason  = "invalid message",
     })
   elseif message.type == "authenticate" then
-    local   _, status = Http.json {
+    local result, status = Http.json {
       copas   = true,
       url     = editor.resource.url,
       method  = "HEAD",
@@ -219,7 +219,12 @@ function Editor.dispatch (editor, ws)
         id      = message.id,
         type    = "answer",
         success = false,
-        reason  = "authentication failure",
+        reason  = {
+          result = result,
+          status = status,
+          token  = message.token,
+          url    = editor.resource.url,
+        },
       })
     end
   elseif message.type == "patch" then
