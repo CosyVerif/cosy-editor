@@ -24,7 +24,7 @@ build:
     - script:
         name: "test"
         code: |
-          busted src/
+          busted --output=TAP src/
   after-steps:
     - slack-notifier:
         url: $SLACK_URL
