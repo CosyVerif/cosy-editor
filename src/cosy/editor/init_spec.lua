@@ -12,7 +12,7 @@ local Json      = require "cjson"
 local Time      = require "socket".gettime
 local Websocket = require "websocket"
 local Http      = require "cosy.editor.http"
-local Instance  = require "cosy.server.instance"
+local Instance  = require "cosy.instance"
 
 local Config = {
   num_workers = 1,

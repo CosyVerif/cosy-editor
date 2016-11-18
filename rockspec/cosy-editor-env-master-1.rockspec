@@ -15,20 +15,20 @@ description = {
 
 dependencies = {
   "lua >= 5.1",
-  "argparse",
-  "ansicolors",
   "busted",
-  "copas",
-  "cosy-server",
   "cluacov",
+  "copas",
+  "cosy-instance",
   "etlua",
   "hashids",
   "jwt",
   "luacheck",
   "luacov",
   "luacov-coveralls",
-  "luafilesystem",
   "luasocket",
+  "luasec",
+  "lua-cjson",
+  "lua-websockets",
 }
 
 build = {
