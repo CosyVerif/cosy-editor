@@ -249,7 +249,7 @@ function Editor.answer (editor)
   end
   table.remove (editor.queue, 1)
   assert (message.type == "patch")
-  local layer = editor:load (message.patch)
+  local layer = editor:load (message.patch, editor.layer)
   if not layer then
     message.client:send (Json.encode {
       id      = message.id,
@@ -338,7 +338,7 @@ function Editor.stop (editor)
   Copas.wakeup (editor.worker)
 end
 
-function Editor.load (editor, patch)
+function Editor.load (editor, patch, where)
   local loaded, ok, err
   if type (patch) == "string" then
     if _G.loadstring then
@@ -359,11 +359,18 @@ function Editor.load (editor, patch)
   if not loaded then
     return nil, "no patch"
   end
-  local current, ref = editor.Layer.new {
-    [editor.Layer.key.refines] = {
-      editor.layer,
+  local current, ref
+  if where then
+    current = editor.Layer.new {
+      temporary = true
     }
-  }
+    current [editor.Layer.key.refines] = {
+      where.layer,
+    }
+    ref = where.ref
+  else
+    current, ref = editor.Layer.new {}
+  end
   ok, err = pcall (loaded, editor.Layer, current, ref)
   if not ok then
     return nil, err
