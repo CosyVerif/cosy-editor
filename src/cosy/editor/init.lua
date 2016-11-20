@@ -39,7 +39,8 @@ function Editor.create (options)
     queue     = {},
     Layer     = Layer,
     data      = nil,
-    layer     = nil,
+    base      = nil,
+    current   = nil,
   }, Editor)
   Layer.require = function (name)
     local loaded = Layer.loaded [name]
@@ -98,6 +99,7 @@ function Editor.create (options)
 end
 
 function Editor.start (editor)
+  assert (getmetatable (editor) == Editor)
   local copas_addserver = Copas.addserver
   local addserver       = function (socket, f)
     editor.socket = socket
@@ -116,16 +118,18 @@ function Editor.start (editor)
   }
   if resource then
     assert (status == 200, status)
-    local loaded
-    if _G.loadstring then
-      loaded = assert (_G.loadstring (resource.data))
-    else
-      loaded = assert (_G.load (resource.data, nil, "t"))
-    end
-    local layer, ref = editor.Layer.new {}
-    loaded (editor.Layer, layer, ref)
-    editor.data  = resource.data
-    editor.layer = layer
+    local layer, ref = editor:load (resource.data)
+    local current    = Layer.new { temporary = true }
+    current [Layer.key.refines] = { layer }
+    editor.data    = resource.data
+    editor.base    = {
+      layer = layer,
+      ref   = ref,
+    }
+    editor.current = {
+      layer = current,
+      ref   = ref,
+    }
   end
   editor.count    = 0
   editor.running  = true
@@ -165,6 +169,7 @@ function Editor.start (editor)
 end
 
 function Editor.dispatch (editor, ws)
+  assert (getmetatable (editor) == Editor)
   local ok
   local message = ws:receive ()
   if not message then
@@ -243,13 +248,16 @@ function Editor.dispatch (editor, ws)
 end
 
 function Editor.answer (editor)
+  assert (getmetatable (editor) == Editor)
   local message = editor.queue [1]
   if not message then
     return Copas.sleep (1)
   end
   table.remove (editor.queue, 1)
   assert (message.type == "patch")
-  local layer = editor:load (message.patch, editor.layer)
+  local layer   = editor:load (message.patch, editor.current)
+  local refines = editor.current.layer [Layer.key.refines]
+  refines [2]   = nil
   if not layer then
     message.client:send (Json.encode {
       id      = message.id,
@@ -280,8 +288,8 @@ function Editor.answer (editor)
     headers = { Authorization = message.info.token and "Bearer " .. tostring (message.info.token) },
   }
   if status == 204 then
-    editor.Layer.merge (layer, editor.layer)
-    editor.data = editor.Layer.dump (editor.layer)
+    Layer.merge (layer, editor.base.layer)
+    editor.data = Layer.dump (editor.base.layer)
     message.client:send (Json.encode {
       id      = message.id,
       type    = "answer",
@@ -314,6 +322,7 @@ function Editor.answer (editor)
 end
 
 function Editor.check (editor)
+  assert (getmetatable (editor) == Editor)
   if  next (editor.connected) == nil
   and #editor.queue == 0
   and editor.count  > 0
@@ -323,6 +332,7 @@ function Editor.check (editor)
 end
 
 function Editor.stop (editor)
+  assert (getmetatable (editor) == Editor)
   print (Colors (Et.render ("%{blue}[<%= time %>]%{reset} Stop editor for %{green}<%= resource %>.", {
     resource = editor.resource.url,
     time     = os.date "%c",
@@ -338,7 +348,9 @@ function Editor.stop (editor)
   Copas.wakeup (editor.worker)
 end
 
-function Editor.load (editor, patch, where)
+function Editor.load (editor, patch, within)
+  assert (getmetatable (editor) == Editor)
+  assert (within == nil or type (within) == "table")
   local loaded, ok, err
   if type (patch) == "string" then
     if _G.loadstring then
@@ -359,23 +371,24 @@ function Editor.load (editor, patch, where)
   if not loaded then
     return nil, "no patch"
   end
-  local current, ref
-  if where then
-    current = editor.Layer.new {
+  local layer, ref
+  if within then
+    layer, ref = Layer.new {
       temporary = true
-    }
-    current [editor.Layer.key.refines] = {
-      where.layer,
-    }
-    ref = where.ref
+    }, within.ref
+    local refines = within.layer [Layer.key.refines]
+    refines [Layer.len (refines)+1] = layer
+    local old = Layer.write_to (within.layer, layer)
+    ok, err = pcall (loaded, editor.Layer, within.layer, within.ref)
+    Layer.write_to (within.layer, old)
   else
-    current, ref = editor.Layer.new {}
+    layer, ref = Layer.new {}
+    ok, err = pcall (loaded, editor.Layer, layer, ref)
   end
-  ok, err = pcall (loaded, editor.Layer, current, ref)
   if not ok then
     return nil, err
   end
-  return current, ref
+  return layer, ref
 end
 
 return Editor
