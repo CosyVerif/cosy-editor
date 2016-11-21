@@ -45,7 +45,9 @@ function Editor.create (options)
   Layer.require = function (name)
     local loaded = Layer.loaded [name]
     if loaded then
-      return loaded, Layer.Reference.new (loaded)
+      local layer = Layer.hidden [loaded].layer
+      local info  = Layer.hidden [layer]
+      return info.proxy, info.ref
     elseif pcall (require, name) then
       local layer, ref = editor:load (require (name))
       Layer.loaded [name] = layer
