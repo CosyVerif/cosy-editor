@@ -31,6 +31,11 @@ parser:option "--port" {
   default     = "8080",
   convert     = tonumber,
 }
+parser:option "--timeout" {
+  description = "timeout before stopping (in seconds)",
+  default     = "1",
+  convert     = tonumber,
+}
 
 local arguments = parser:parse ()
 local editor    = Editor.create (arguments)

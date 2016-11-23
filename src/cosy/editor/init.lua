@@ -31,6 +31,7 @@ function Editor.create (options)
   local editor = setmetatable ({
     running   = false,
     count     = 0,
+    timeout   = assert (options.timeout),
     api       = api,
     port      = assert (options.port),
     resource  = resource,
@@ -97,6 +98,7 @@ function Editor.start (editor)
       ref   = ref,
     }
   end
+  editor.last     = os.time ()
   editor.count    = 0
   editor.running  = true
   Copas.addserver = addserver
@@ -106,6 +108,7 @@ function Editor.start (editor)
     protocols = {
       cosy = function (ws)
         editor.count = editor.count + 1
+        editor.last  = os.time ()
         print (Colors (Et.render ("%{blue}[<%= time %>]%{reset} New connection for %{green}<%= resource %>%{reset}.", {
           resource = editor.resource.url,
           time     = os.date "%c",
@@ -113,7 +116,6 @@ function Editor.start (editor)
         editor.connected [ws] = true
         while editor.running and ws.state == "OPEN" do
           editor:dispatch (ws)
-          editor:check  ()
         end
         editor.connected [ws] = nil
       end,
@@ -123,13 +125,19 @@ function Editor.start (editor)
   editor.worker   = Copas.addthread (function ()
     while editor.running do
       editor:answer ()
-      editor:check  ()
     end
   end)
-  editor.stopper  = Copas.addthread (function ()
+  editor.stopper   = Copas.addthread (function ()
     while editor.running do
-      Copas.sleep (-math.huge)
-      editor:stop ()
+      if  next (editor.connected) == nil
+      and #editor.queue == 0
+      and editor.count  > 0
+      and editor.last + editor.timeout < os.time ()
+      then
+        editor:stop ()
+      else
+        Copas.sleep (editor.timeout / 2)
+      end
     end
   end)
 end
@@ -197,6 +205,7 @@ function Editor.dispatch (editor, ws)
     ws:close ()
     return
   end
+  editor.last = os.time ()
   ok, message = pcall (Json.decode, message)
   if not ok then
     ws:send (Json.encode {
@@ -300,6 +309,7 @@ function Editor.answer (editor)
   if not message then
     return Copas.sleep (1)
   end
+  editor.last = os.time ()
   table.remove (editor.queue, 1)
   assert (message.type == "patch")
   local layer   = editor:load (message.patch, editor.current)
@@ -368,16 +378,6 @@ function Editor.answer (editor)
   end
 end
 
-function Editor.check (editor)
-  assert (getmetatable (editor) == Editor)
-  if  next (editor.connected) == nil
-  and #editor.queue == 0
-  and editor.count  > 0
-  then
-    Copas.wakeup (editor.stopper)
-  end
-end
-
 function Editor.stop (editor)
   assert (getmetatable (editor) == Editor)
   print (Colors (Et.render ("%{blue}[<%= time %>]%{reset} Stop editor for %{green}<%= resource %>.", {
@@ -393,6 +393,7 @@ function Editor.stop (editor)
     headers = { Authorization = "Bearer " .. editor.token }
   }
   Copas.wakeup (editor.worker)
+  Copas.wakeup (editor.stopper)
 end
 
 function Editor.load (editor, patch, within)

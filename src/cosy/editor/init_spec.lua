@@ -16,6 +16,7 @@ local Instance  = require "cosy.instance"
 
 local Config = {
   num_workers = 1,
+  mode        = "development",
   auth0       = {
     domain        = assert (os.getenv "AUTH0_DOMAIN"),
     client_id     = assert (os.getenv "AUTH0_ID"    ),
@@ -147,6 +148,7 @@ describe ("editor", function ()
       Editor.create {
         resource = resource_url,
         port     = 0,
+        timeout  = 1,
         token    = make_token (Et.render ("/projects/<%- project %>", {
           project  = project,
         }), {}, math.huge),
@@ -168,6 +170,7 @@ describe ("editor", function ()
     local editor = Editor.create {
       resource = resource_url,
       port     = 0,
+      timeout  = 1,
       token    = make_token (Et.render ("/projects/<%- project %>", {
         project  = project,
       }), {}, math.huge),
@@ -186,6 +189,7 @@ describe ("editor", function ()
       editor = Editor.create {
         resource = resource_url,
         port     = 0,
+        timeout  = 1,
         token    = make_token (Et.render ("/projects/<%- project %>", {
           project  = project,
         }), {}, math.huge),
