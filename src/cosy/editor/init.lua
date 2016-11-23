@@ -10,6 +10,7 @@ local Http      = require "cosy.editor.http"
 -- Messages:
 -- { id = ..., type = "authenticate", token = "...", user = "..." }
 -- { id = ..., type = "patch"       , patch = "..." }
+-- { id = ..., type = "require"     , module = "..." }
 -- { id = ..., type = "answer"      , success = true|false, reason = "..." }
 -- { id = ..., type = "update"      , patch = "...", origin = "user" }
 -- { id = ..., type = "execute" }
@@ -37,6 +38,7 @@ function Editor.create (options)
     clients   = setmetatable ({}, { __mode = "k" }),
     connected = setmetatable ({}, { __mode = "k" }),
     queue     = {},
+    loaded    = {},
     Layer     = Layer,
     data      = nil,
     base      = nil,
@@ -48,54 +50,16 @@ function Editor.create (options)
       local layer = Layer.hidden [loaded].layer
       local info  = Layer.hidden [layer]
       return info.proxy, info.ref
-    elseif pcall (require, name) then
-      local layer, ref = editor:load (require (name))
-      Layer.loaded [name] = layer
-      return layer, ref
-    else
-      local project_name, resource_name = name:match "^(%w+)/(%w+)$"
-      local url
-      if project_name then
-        url = Et.render ("<%- api %>/projects/<%- project %>/resources/<%- resource %>", {
-          api      = editor.api.url,
-          project  = project_name,
-          resource = resource_name,
-        })
-      else
-        local _, status, headers = Http.json {
-          copas    = true,
-          url      = Et.render ("<%- api %>/aliases/<%- alias %>", {
-            api   = editor.api.url,
-            alias = name,
-          }),
-          method   = "GET",
-          redirect = false,
-          headers  = { Authorization = "Bearer " .. tostring (editor.token) },
-        }
-        if status == 302 then
-          url = headers.location
-        else
-          error (status)
-        end
-      end
-      local result, status = Http.json {
-        copas   = true,
-        url     = url,
-        method  = "GET",
-        headers = { Authorization = "Bearer " .. tostring (editor.token) },
-      }
-      if status == 200 then
-        local layer, ref = editor:load (result.data)
+    end
+    local contents = editor:require (name)
+    if contents then
+      local layer, ref = editor:load (contents)
+      if layer then
         Layer.loaded [name] = layer
         return layer, ref
-      elseif status == 404 then
-        error "not found"
-      elseif status == 403 then
-        error "forbidden"
-      else
-        error (status)
       end
     end
+    error "not found"
   end
   return editor
 end
@@ -170,6 +134,61 @@ function Editor.start (editor)
   end)
 end
 
+function Editor.require (editor, module)
+  if editor.loaded [module] then
+    return editor.loaded [module]
+  end
+  local loaded = Layer.loaded [module]
+  if loaded then
+    local dumped = Layer.dump (loaded)
+    -- do not store in editor.loaded, as the module may change
+    return dumped
+  end
+  local filename = package.searchpath (module, package.path)
+  if filename then
+    local file = io.open (filename, "r")
+    local contents = file:read "*all"
+    file:close ()
+    editor.loaded [module] = contents
+    return contents
+  end
+  local project_name, resource_name = module:match "^(%w+)/(%w+)$"
+  local url
+  if project_name then
+    url = Et.render ("<%- api %>/projects/<%- project %>/resources/<%- resource %>", {
+      api      = editor.api.url,
+      project  = project_name,
+      resource = resource_name,
+    })
+  else
+    local _, status, headers = Http.json {
+      copas    = true,
+      url      = Et.render ("<%- api %>/aliases/<%- alias %>", {
+        api   = editor.api.url,
+        alias = module,
+      }),
+      method   = "GET",
+      redirect = false,
+      headers  = { Authorization = "Bearer " .. tostring (editor.token) },
+    }
+    if status == 302 then
+      url = headers.location
+    else
+      error (status)
+    end
+  end
+  local result, status = Http.json {
+    copas   = true,
+    url     = url,
+    method  = "GET",
+    headers = { Authorization = "Bearer " .. tostring (editor.token) },
+  }
+  if status == 200 then
+    editor.loaded [module] = result.data
+    return result.data
+  end
+end
+
 function Editor.dispatch (editor, ws)
   assert (getmetatable (editor) == Editor)
   local ok
@@ -239,6 +258,32 @@ function Editor.dispatch (editor, ws)
     message.info   = editor.clients [ws]
     editor.queue [#editor.queue+1] = message
     Copas.wakeup (editor.worker)
+  elseif message.type == "require" then
+    if editor.clients [ws] then
+      local result = editor:require (message.module)
+      if result then
+        ws:send (Json.encode {
+          id      = message.id,
+          type    = "answer",
+          success = true,
+          module  = result,
+        })
+      else
+        ws:send (Json.encode {
+          id      = message.id,
+          type    = "answer",
+          success = false,
+          reason  = "not found",
+        })
+      end
+    else
+      ws:send (Json.encode {
+        id      = message.id,
+        type    = "answer",
+        success = false,
+        reason  = "forbidden",
+      })
+    end
   else
     ws:send (Json.encode {
       id      = message.id,
