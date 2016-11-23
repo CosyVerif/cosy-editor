@@ -38,6 +38,13 @@ parser:option "--timeout" {
 }
 
 local arguments = parser:parse ()
+if not arguments.resource
+or not arguments.token
+or not arguments.port
+or not arguments.timeout then
+  print (parser:get_help ())
+  return 1
+end
 local editor    = Editor.create (arguments)
 editor:start ()
 Copas.loop ()
