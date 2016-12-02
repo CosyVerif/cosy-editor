@@ -45,6 +45,8 @@ or not arguments.timeout then
   print (parser:get_help ())
   return 1
 end
-local editor    = Editor.create (arguments)
-editor:start ()
+local editor = Editor.create (arguments)
+Copas.addthread (function ()
+  editor:start ()
+end)
 Copas.loop ()

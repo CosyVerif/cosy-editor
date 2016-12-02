@@ -62,8 +62,9 @@ describe ("editor", function ()
   teardown (function ()
     while true do
       local info, status = Http.json {
-        url    = server_url,
-        method = "GET",
+        nocopas = true,
+        url     = server_url,
+        method  = "GET",
       }
       assert.are.equal (status, 200)
       if info.stats.services == 0 then
@@ -84,6 +85,7 @@ describe ("editor", function ()
     for k, v in pairs (identities) do
       local token = make_token (v)
       local result, status = Http.json {
+        nocopas = true,
         url     = server_url,
         method  = "GET",
         headers = { Authorization = "Bearer " .. token },
@@ -97,6 +99,7 @@ describe ("editor", function ()
     local _
     local token = make_token (identities.rahan)
     local result, status = Http.json {
+      nocopas = true,
       url     = server_url .. "/projects",
       method  = "POST",
       headers = {
@@ -107,6 +110,7 @@ describe ("editor", function ()
     project = result.id
     project_url = server_url .. "/projects/" .. project
     _, status = Http.json {
+      nocopas = true,
       url     = project_url .. "/permissions/" .. users.crao,
       method  = "PUT",
       body    = { permission = "none" },
@@ -116,6 +120,7 @@ describe ("editor", function ()
     }
     assert.is_truthy (status == 201 or status == 202)
     _, status = Http.json {
+      nocopas = true,
       url     = project_url .. "/permissions/" .. users.naouna,
       method  = "PUT",
       body    = { permission = "read" },
@@ -125,6 +130,7 @@ describe ("editor", function ()
     }
     assert.is_truthy (status == 201 or status == 202)
     result, status = Http.json {
+      nocopas = true,
       url     = project_url .. "/resources",
       method  = "POST",
       headers = {
@@ -160,6 +166,7 @@ describe ("editor", function ()
     local Editor = require "cosy.editor"
     local token  = make_token (identities.rahan)
     local _, status = Http.json {
+      nocopas = true,
       url     = resource_url,
       method  = "DELETE",
       headers = {
@@ -175,9 +182,13 @@ describe ("editor", function ()
         project  = project,
       }), {}, math.huge),
     }
-    assert.has.errors (function ()
-      editor:start ()
+    local ok, err
+    Copas.addthread (function ()
+      ok, err = pcall (Editor.start, editor)
     end)
+    Copas.loop ()
+    assert.is_falsy   (ok)
+    assert.is_not_nil (err)
   end)
 
   describe ("correctly configured", function ()
@@ -194,11 +205,11 @@ describe ("editor", function ()
           project  = project,
         }), {}, math.huge),
       }
-      editor:start ()
     end)
 
     it ("can be started and explicitly stopped", function ()
       Copas.addthread (function ()
+        editor:start ()
         editor:stop ()
       end)
       Copas.loop ()
@@ -207,6 +218,7 @@ describe ("editor", function ()
     it ("can receive connections", function ()
       local connected
       Copas.addthread (function ()
+        editor:start ()
         Copas.sleep (1)
         local url = Et.render ("ws://<%- host %>:<%- port %>", {
           host = editor.host,
@@ -222,6 +234,7 @@ describe ("editor", function ()
     it ("cannot receive incorrect messages", function ()
       local answers = {}
       Copas.addthread (function ()
+        editor:start ()
         Copas.sleep (1)
         local url = Et.render ("ws://<%- host %>:<%- port %>", {
           host = editor.host,
@@ -269,6 +282,9 @@ describe ("editor", function ()
 
     it ("checks read access on authentication", function ()
       local answers = {}
+      Copas.addthread (function ()
+        editor:start ()
+      end)
       for name, user in pairs (users) do
         Copas.addthread (function ()
           Copas.sleep (1)
@@ -321,6 +337,7 @@ describe ("editor", function ()
     it ("sends the model on authentication", function ()
       local answers = {}
       Copas.addthread (function ()
+        editor:start ()
         Copas.sleep (1)
         local url = Et.render ("ws://<%- host %>:<%- port %>", {
           host = editor.host,
@@ -352,6 +369,9 @@ describe ("editor", function ()
 
     it ("applies or denies patches depending on permissions", function ()
       local answers = {}
+      Copas.addthread (function ()
+        editor:start ()
+      end)
       for name, user in pairs (users) do
         answers [name] = {}
         local my_answers = answers [name]
@@ -405,10 +425,11 @@ describe ("editor", function ()
       assert.is_falsy  (answers.naouna [4].success)
     end)
 
-    it ("correctly loads dependencies", function ()
+    it ("#current correctly loads dependencies", function ()
       local answers        = {}
       local token          = make_token (identities.crao)
       local result, status = Http.json {
+        nocopas = true,
         url     = server_url .. "/projects",
         method  = "POST",
         headers = {
@@ -419,6 +440,7 @@ describe ("editor", function ()
       local crao_project     = result.id
       local crao_project_url = server_url .. "/projects/" .. crao_project
       result, status = Http.json {
+        nocopas = true,
         url     = crao_project_url .. "/resources",
         method  = "POST",
         headers = {
@@ -429,6 +451,7 @@ describe ("editor", function ()
       local crao_resource = result.id
       local _
       _, status = Http.json {
+        nocopas = true,
         url     = crao_project_url .. "/permissions/" .. project,
         method  = "PUT",
         body    = { permission = "read" },
@@ -438,6 +461,7 @@ describe ("editor", function ()
       }
       assert.is_truthy (status == 201 or status == 202)
       Copas.addthread (function ()
+        editor:start ()
         Copas.sleep (1)
         local url = Et.render ("ws://<%- host %>:<%- port %>", {
           host = editor.host,
@@ -479,6 +503,7 @@ describe ("editor", function ()
     it ("correctly loads aliased dependencies", function ()
       local token = make_token (identities.rahan)
       local _, status = Http.json {
+        nocopas = true,
         url     = resource_url .. "/aliases/my.resource",
         method  = "PUT",
         headers = {
@@ -488,6 +513,7 @@ describe ("editor", function ()
       assert.are.same (status, 201)
       local answers = {}
       Copas.addthread (function ()
+        editor:start ()
         Copas.sleep (1)
         local url = Et.render ("ws://<%- host %>:<%- port %>", {
           host = editor.host,
@@ -527,6 +553,7 @@ describe ("editor", function ()
       local answers        = {}
       local token          = make_token (identities.crao)
       local result, status = Http.json {
+        nocopas = true,
         url     = server_url .. "/projects",
         method  = "POST",
         headers = {
@@ -537,6 +564,7 @@ describe ("editor", function ()
       local crao_project     = result.id
       local crao_project_url = server_url .. "/projects/" .. crao_project
       result, status = Http.json {
+        nocopas = true,
         url     = crao_project_url .. "/resources",
         method  = "POST",
         headers = {
@@ -547,6 +575,7 @@ describe ("editor", function ()
       local crao_resource = result.id
       local _
       _, status = Http.json {
+        nocopas = true,
         url     = crao_project_url .. "/permissions/" .. project,
         method  = "PUT",
         body    = { permission = "none" },
@@ -556,6 +585,7 @@ describe ("editor", function ()
       }
       assert.is_truthy (status == 201 or status == 202)
       Copas.addthread (function ()
+        editor:start ()
         Copas.sleep (1)
         local url = Et.render ("ws://<%- host %>:<%- port %>", {
           host = editor.host,

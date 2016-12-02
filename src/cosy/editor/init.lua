@@ -10,9 +10,9 @@ local Http      = require "cosy.editor.http"
 -- Messages:
 -- { id = ..., type = "authenticate", token = "...", user = "..." }
 -- { id = ..., type = "patch"       , patch = "..." }
+-- { id = ..., type = "update"      , layer = "...", patch = "...", origin = "user" }
 -- { id = ..., type = "require"     , module = "..." }
 -- { id = ..., type = "answer"      , success = true|false, reason = "..." }
--- { id = ..., type = "update"      , patch = "...", origin = "user" }
 -- { id = ..., type = "execute" }
 
 local Editor = {}
@@ -38,69 +38,38 @@ function Editor.create (options)
     token     = assert (options.token),
     clients   = setmetatable ({}, { __mode = "k" }),
     connected = setmetatable ({}, { __mode = "k" }),
+    requests  = {},
     queue     = {},
-    loaded    = {},
-    Layer     = Layer,
-    data      = nil,
-    base      = nil,
-    current   = nil,
+    layers    = {},
+    Layer     = setmetatable ({}, { __index = Layer }),
   }, Editor)
-  Layer.require = function (name)
-    local loaded = Layer.loaded [name]
-    if loaded then
-      local layer = Layer.hidden [loaded].layer
-      local info  = Layer.hidden [layer]
-      return info.proxy, info.ref
+  editor.Layer.require = function (name)
+    local result, err = editor:require (name)
+    if not result then
+      error (err)
     end
-    local contents = editor:require (name)
-    if contents then
-      local layer, ref = editor:load (contents)
-      if layer then
-        Layer.loaded [name] = layer
-        return layer, ref
-      end
-    end
-    error "not found"
+    return result.layer, result.ref
   end
   return editor
 end
 
 function Editor.start (editor)
   assert (getmetatable (editor) == Editor)
+  assert (editor:require (editor.resource.url))
+  editor.last     = os.time ()
+  editor.count    = 0
+  editor.running  = true
   local copas_addserver = Copas.addserver
   local addserver       = function (socket, f)
     editor.socket = socket
     editor.host, editor.port = socket:getsockname ()
     copas_addserver (socket, f)
-    print (Colors (Et.render ("%{blue}[<%= time %>]%{reset} Start editor for %{green}<%= resource %>%{reset} at %{green}<%= url %>%{reset}.", {
+    print (Colors (Et.render ("%{blue}[<%- time %>]%{reset} Start editor for %{green}<%- resource %>%{reset} at %{green}<%- url %>%{reset}.", {
       resource = editor.resource.url,
       time     = os.date "%c",
       url      = "ws://" .. editor.host .. ":" .. tostring (editor.port),
     })))
   end
-  local resource, status = Http.json {
-    url     = editor.resource.url,
-    method  = "GET",
-    headers = { Authorization = "Bearer " .. editor.token},
-  }
-  if resource then
-    assert (status == 200, status)
-    local layer, ref = editor:load (resource.data)
-    local current    = Layer.new { temporary = true }
-    current [Layer.key.refines] = { layer }
-    editor.data    = resource.data
-    editor.base    = {
-      layer = layer,
-      ref   = ref,
-    }
-    editor.current = {
-      layer = current,
-      ref   = ref,
-    }
-  end
-  editor.last     = os.time ()
-  editor.count    = 0
-  editor.running  = true
   Copas.addserver = addserver
   editor.server   = Websocket.server.copas.listen {
     port      = editor.port,
@@ -109,7 +78,7 @@ function Editor.start (editor)
       cosy = function (ws)
         editor.count = editor.count + 1
         editor.last  = os.time ()
-        print (Colors (Et.render ("%{blue}[<%= time %>]%{reset} New connection for %{green}<%= resource %>%{reset}.", {
+        print (Colors (Et.render ("%{blue}[<%- time %>]%{reset} New connection for %{green}<%- resource %>%{reset}.", {
           resource = editor.resource.url,
           time     = os.date "%c",
         })))
@@ -142,58 +111,51 @@ function Editor.start (editor)
   end)
 end
 
-function Editor.require (editor, module)
-  if editor.loaded [module] then
-    return editor.loaded [module]
-  end
-  local loaded = Layer.loaded [module]
-  if loaded then
-    local dumped = Layer.dump (loaded)
-    -- do not store in editor.loaded, as the module may change
-    return dumped
-  end
-  local filename = package.searchpath (module, package.path)
-  if filename then
-    local file = io.open (filename, "r")
-    local contents = file:read "*all"
-    file:close ()
-    editor.loaded [module] = contents
-    return contents
-  end
-  local project_name, resource_name = module:match "^(%w+)/(%w+)$"
-  local url
-  if project_name then
-    url = Et.render ("<%- api %>/projects/<%- project %>/resources/<%- resource %>", {
-      api      = editor.api.url,
-      project  = project_name,
-      resource = resource_name,
-    })
-  else
+function Editor.connect (editor, url)
+  local wsurl
+  local info = editor.layers [url]
+  for _ = 1, 60 do
     local _, status, headers = Http.json {
-      copas    = true,
-      url      = Et.render ("<%- api %>/aliases/<%- alias %>", {
-        api   = editor.api.url,
-        alias = module,
-      }),
-      method   = "GET",
       redirect = false,
-      headers  = { Authorization = "Bearer " .. tostring (editor.token) },
+      url      = editor.api.url .. info.path .. "/editor",
+      method   = "GET",
+      headers  = {
+        Authorization = "Bearer " .. tostring (editor.token),
+      },
     }
     if status == 302 then
-      url = headers.location
-    else
-      error (status)
+      wsurl = headers.location:gsub ("^http", "ws")
+      break
     end
+    Copas.sleep (1)
   end
-  local result, status = Http.json {
-    copas   = true,
-    url     = url,
-    method  = "GET",
-    headers = { Authorization = "Bearer " .. tostring (editor.token) },
-  }
-  if status == 200 then
-    editor.loaded [module] = result.data
-    return result.data
+  assert (wsurl)
+  local client = Websocket.client.copas ()
+  assert (client:connect (wsurl, "cosy"))
+  info.ws = client
+  client:send (Json.encode {
+    id    = 1,
+    type  = "authenticate",
+    token = editor.token,
+    user  = editor.resource.url,
+  })
+  local answer = client:receive ()
+  answer = Json.decode (answer)
+  assert (answer.success, answer.reason)
+  while editor.running do
+    local message = client:receive ()
+    if not message then
+      client:close ()
+      info.receiver = nil
+      return
+    end
+    message = Json.decode (message)
+    if message.type == "update" then
+      editor.queue [#editor.queue+1] = message
+      Copas.wakeup (editor.worker)
+    else
+      assert (false)
+    end
   end
 end
 
@@ -228,7 +190,6 @@ function Editor.dispatch (editor, ws)
     })
   elseif message.type == "authenticate" then
     local result, status = Http.json {
-      copas   = true,
       url     = editor.resource.url,
       method  = "HEAD",
       headers = { Authorization = message.token and "Bearer " .. tostring (message.token) },
@@ -245,7 +206,8 @@ function Editor.dispatch (editor, ws)
       }
       ws:send (Json.encode {
         type   = "update",
-        patch  = editor.data,
+        layer  = editor.resource.url,
+        patch  = editor.layers [editor.resource.url].data,
         origin = editor.resource.url,
       })
     else
@@ -275,7 +237,7 @@ function Editor.dispatch (editor, ws)
           id      = message.id,
           type    = "answer",
           success = true,
-          module  = result,
+          module  = result.data,
         })
       else
         ws:send (Json.encode {
@@ -307,46 +269,81 @@ function Editor.answer (editor)
   assert (getmetatable (editor) == Editor)
   local message = editor.queue [1]
   if not message then
-    return Copas.sleep (1)
+    return Copas.sleep (-math.huge)
   end
   editor.last = os.time ()
+  local layer = editor.layers [editor.resource.url]
   table.remove (editor.queue, 1)
-  assert (message.type == "patch")
-  local layer   = editor:load (message.patch, editor.current)
-  local refines = editor.current.layer [Layer.key.refines]
-  refines [2]   = nil
-  if not layer then
-    message.client:send (Json.encode {
-      id      = message.id,
-      type    = "answer",
-      success = false,
-      reason  = "invalid layer",
-    })
-    return
-  end
-  if not message.info then
-    message.client:send (Json.encode {
-      id      = message.id,
-      type    = "answer",
-      success = false,
-      reason  = "not authentified",
-    })
-    return
-  end
-  local _, status = Http.json {
-    copas   = true,
-    url     = editor.resource.url,
-    method  = "PATCH",
-    body    = {
-      patches = { message.patch },
-      data    = editor.data,
-      editor  = editor.token,
-    },
-    headers = { Authorization = message.info.token and "Bearer " .. tostring (message.info.token) },
-  }
-  if status == 204 then
-    Layer.merge (layer, editor.base.layer)
-    editor.data = Layer.dump (editor.base.layer)
+  if message.type == "update" then
+    local change, err = editor:patch (message.patch, message.layer)
+    if not change then
+      return print (Colors (Et.render ("%{red}[<%- time %>]%{reset} Cannot apply patch to %{blue}<%- layer %>%{reset}: %{red}<%- error %>%{reset}.", {
+        time  = os.date "%c",
+        layer = message.layer,
+        error = err,
+      })))
+    end
+    Layer.merge (change, layer.remote)
+    for client in pairs (editor.clients) do
+      client:send (Json.encode {
+        type    = "update",
+        layer   = message.layer,
+        patch   = message.patch,
+        origin  = message.origin,
+      })
+    end
+  elseif message.type == "patch" then
+    if not message.info then
+      message.client:send (Json.encode {
+        id      = message.id,
+        type    = "answer",
+        success = false,
+        reason  = "not authentified",
+      })
+      return
+    end
+    local change, err = editor:patch (message.patch)
+    if not change then
+      print (Colors (Et.render ("%{red}[<%- time %>]%{reset} Cannot apply patch: %{red}<%- error %>%{reset}.", {
+        time  = os.date "%c",
+        error = Json.encode (err),
+      })))
+      return message.client:send (Json.encode {
+        id      = message.id,
+        type    = "answer",
+        success = false,
+        reason  = err,
+      })
+    end
+    local _, status = Http.json {
+      url     = editor.resource.url,
+      method  = "PATCH",
+      body    = {
+        patches = { message.patch },
+        editor  = editor.token,
+      },
+      headers = { Authorization = message.info.token and "Bearer " .. tostring (message.info.token) },
+    }
+    if status ~= 204 then
+      return message.client:send (Json.encode {
+        id      = message.id,
+        type    = "answer",
+        success = false,
+        reason  = { status = status },
+      })
+    end
+    Layer.merge (change, layer.remote)
+    layer.data = Layer.dump (layer.remote)
+    _, status = Http.json {
+      url     = editor.resource.url,
+      method  = "PATCH",
+      body    = {
+        data    = layer.data,
+        editor  = editor.token,
+      },
+      headers = { Authorization = "Bearer " .. tostring (editor.token) },
+    }
+    assert (status == 204)
     message.client:send (Json.encode {
       id      = message.id,
       type    = "answer",
@@ -356,87 +353,182 @@ function Editor.answer (editor)
       if client ~= message.client then
         client:send (Json.encode {
           type   = "update",
+          layer  = editor.resource.url,
           patch  = message.patch,
           origin = message.info.user,
         })
       end
     end
-  elseif status == 403 then
-    message.client:send (Json.encode {
-      id      = message.id,
-      type    = "answer",
-      success = false,
-      reason  = "forbidden",
-    })
-  else
-    message.client:send (Json.encode {
-      id      = message.id,
-      type    = "answer",
-      success = false,
-      reason  = status,
-    })
   end
 end
 
 function Editor.stop (editor)
   assert (getmetatable (editor) == Editor)
-  print (Colors (Et.render ("%{blue}[<%= time %>]%{reset} Stop editor for %{green}<%= resource %>.", {
+  print (Colors (Et.render ("%{blue}[<%- time %>]%{reset} Stop editor for %{green}<%- resource %>.", {
     resource = editor.resource.url,
     time     = os.date "%c",
   })))
   editor.running = false
   editor.server:close ()
   Http.json {
-    copas   = true,
     url     = editor.resource.url .. "/editor",
     method  = "DELETE",
     headers = { Authorization = "Bearer " .. editor.token }
   }
   Copas.wakeup (editor.worker)
   Copas.wakeup (editor.stopper)
+  for _, info in pairs (editor.layers) do
+    if info.receiver then
+      Copas.wakeup (info.receiver)
+    end
+  end
 end
 
-function Editor.load (editor, patch, within)
+function Editor.require (editor, module)
   assert (getmetatable (editor) == Editor)
-  assert (within == nil or type (within) == "table")
-  local loaded, ok, err
-  if type (patch) == "string" then
-    if _G.loadstring then
-      loaded, err = _G.loadstring (patch)
-    else
-      loaded, err = _G.load (patch, nil, "t")
+  if editor.layers [module] then
+    return editor.layers [module]
+  end
+  local aliases = {}
+  local url
+  local project_name, resource_name = module:match "^(%w+)/(%w+)$"
+  if project_name then
+    url = Et.render ("<%- api %>/projects/<%- project %>/resources/<%- resource %>", {
+      api      = editor.api.url,
+      project  = project_name,
+      resource = resource_name,
+    })
+  elseif not module:match "^https?://" then
+    url      = Et.render ("<%- api %>/aliases/<%- alias %>", {
+      api   = editor.api.url,
+      alias = module,
+    })
+  else
+    url = module
+  end
+  local contents, status, headers
+  repeat
+    aliases [#aliases+1] = url
+    if editor.layers [url] then
+      local result = editor.layers [url]
+      for _, alias in ipairs (aliases) do
+        editor.layers [alias] = result
+      end
+      return result
     end
-    if not loaded then
+    contents, status, headers = Http.json {
+      url      = url,
+      method   = "GET",
+      redirect = false,
+      headers  = { Authorization = "Bearer " .. tostring (editor.token) },
+    }
+    if status == 302 then
+      url = headers.location
+    elseif status ~= 200 then
+      return nil, { status = status }
+    end
+  until status == 200
+  local loaded, ok, err
+  if _G.loadstring then
+    loaded, err = _G.loadstring (contents.data)
+  else
+    loaded, err = _G.load (contents.data, nil, "t")
+  end
+  if not loaded then
+    return nil, { error = err }
+  end
+  ok, loaded = pcall (loaded)
+  if not ok then
+    return nil, { error = loaded }
+  end
+  for _, name in ipairs (aliases) do
+    editor.layers [name] = contents
+  end
+  if url == editor.resource.url then
+    local remote, ref = Layer.new {
+      name = module,
+    }
+    ok, err = pcall (loaded, editor.Layer, remote, ref)
+    if not ok then
       return nil, err
     end
-    ok, loaded = pcall (loaded)
+    local layer = Layer.new {
+      temporary = true,
+    }
+    layer [Layer.key.refines] = { remote }
+    contents.layer  = layer
+    contents.remote = remote
+    contents.ref    = ref
+  else
+    local remote, ref = Layer.new {
+      name = module,
+    }
+    ok, err = pcall (loaded, editor.Layer, remote, ref)
+    if not ok then
+      return nil, err
+    end
+    contents.layer  = remote
+    contents.remote = remote
+    contents.ref    = ref
+    Layer.write_to (remote, false) -- read-only
+    contents.receiver = Copas.addthread (function ()
+      editor:connect (url)
+    end)
+  end
+  return contents
+end
+
+function Editor.patch (editor, patch, what)
+  assert (getmetatable (editor) == Editor)
+  -- load patch:
+  local ok, loaded, error
+  if type (patch) == "string" then
+    if _G.loadstring then
+      loaded, error = _G.loadstring (patch)
+    else
+      loaded, error = _G.load (patch, nil, "t")
+    end
+    if loaded then
+      ok, loaded = pcall (loaded)
+    else
+      return nil, error
+    end
     if not ok then
       return nil, loaded
     end
   elseif type (patch) == "function" then
     loaded = patch
   end
-  if not loaded then
-    return nil, "no patch"
-  end
-  local layer, ref
-  if within then
-    layer, ref = Layer.new {
-      temporary = true
-    }, within.ref
-    local refines = within.layer [Layer.key.refines]
-    refines [Layer.len (refines)+1] = layer
-    local old = Layer.write_to (within.layer, layer)
-    ok, err = pcall (loaded, editor.Layer, within.layer, within.ref)
-    Layer.write_to (within.layer, old)
+  -- apply patch:
+  local fresh
+  if what then
+    local where   = editor:require (what)
+    local layer   = Layer.new {
+      temporary = true,
+    }
+    fresh = Layer.new {
+      temporary = true,
+    }
+    layer [Layer.key.refines] = { where.layer, fresh }
+    Layer.write_to (layer, fresh)
+    ok, error = pcall (loaded, editor.Layer, layer, where.ref)
+    Layer.write_to (layer, nil)
   else
-    layer, ref = Layer.new {}
-    ok, err = pcall (loaded, editor.Layer, layer, ref)
+    local where   = editor:require (editor.resource.url)
+    local refines = where.layer [Layer.key.refines]
+    fresh = Layer.new {
+      temporary = true,
+    }
+    refines [Layer.len (refines)+1] = fresh
+    Layer.write_to (where.layer, fresh)
+    ok, error = pcall (loaded, editor.Layer, where.layer, where.ref)
+    Layer.write_to (where.layer, nil)
+    refines [Layer.len (refines)] = nil
   end
   if not ok then
-    return nil, err
+    return nil, error
   end
-  return layer, ref
+  return fresh
 end
 
 return Editor

@@ -17,12 +17,12 @@ function M.json (options)
   options.headers ["Content-type"  ] = options.body and "application/json"
   options.headers ["Accept"        ] = "application/json"
   local http
-  if options.copas then
-    http = Httpc
-  else
+  if options.nocopas then
     http = options.url:match "https://"
            and Https
             or Http
+  else
+    http = Httpc
   end
   local _, status, headers = http.request (options)
   result = #result ~= 0
