@@ -57,10 +57,9 @@ function Editor.start (editor)
   assert (getmetatable (editor) == Editor)
   local layer = editor:require (editor.resource.url)
   if not layer then
-    print (Colors (Et.render ("%{blue}[<%- time %>]%{reset} Cannot start editor for %{red}<%- resource %>%{reset} at %{red}<%- url %>%{reset}.", {
+    print (Colors (Et.render ("%{blue}[<%- time %>]%{reset} Cannot find resource %{red}<%- resource %>%{reset}.", {
       resource = editor.resource.url,
       time     = os.date "%c",
-      url      = "ws://" .. editor.host .. ":" .. tostring (editor.port),
     })))
   end
   editor.last     = os.time ()
