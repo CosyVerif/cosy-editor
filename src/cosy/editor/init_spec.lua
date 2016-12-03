@@ -162,7 +162,7 @@ describe ("editor", function ()
     end)
   end)
 
-  it ("cannot start without resource", function ()
+  it ("can start without resource (for server testing)", function ()
     local Editor = require "cosy.editor"
     local token  = make_token (identities.rahan)
     local _, status = Http.json {
@@ -182,13 +182,11 @@ describe ("editor", function ()
         project  = project,
       }), {}, math.huge),
     }
-    local ok, err
     Copas.addthread (function ()
-      ok, err = pcall (Editor.start, editor)
+      editor:start ()
+      editor:stop ()
     end)
     Copas.loop ()
-    assert.is_falsy   (ok)
-    assert.is_not_nil (err)
   end)
 
   describe ("correctly configured", function ()
